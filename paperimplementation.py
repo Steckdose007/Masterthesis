@@ -36,10 +36,12 @@ def compute_energy(signal, sample_rate, bands=[(5000, 11000), (11000, 20000)]):
     
     return energy_bands
 
-# Example usage
-file_path = 'path_to_your_audio.wav'  # Replace with your .wav file path
-signal, sample_rate = load_audio(file_path)
 
-# Extract energy in 5-11 kHz and 11-20 kHz bands
-energy_features = compute_energy(signal, sample_rate)
-print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
+if __name__ == "__main__":
+    # Example usage
+    file_path = 'Data\Speaker1gtSamen.wav'  # Replace with your .wav file path
+    signal, sample_rate = load_audio(file_path)
+
+    # Extract energy in 5-11 kHz and 11-20 kHz bands
+    energy_features = compute_energy(signal, sample_rate)
+    print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
