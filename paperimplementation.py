@@ -2,12 +2,8 @@ import numpy as np
 import librosa
 import scipy.fft
 import matplotlib.pyplot as plt
+from gmm import AudioDataLoader
 
-# Load the audio file
-def load_audio(file_path, sr=44100):
-    # Use librosa to load the audio file and resample to 44.1 kHz
-    signal, sample_rate = librosa.load(file_path, sr=sr)
-    return signal, sample_rate
 
 # Apply Hamming window and frame the signal
 def frame_signal(signal, frame_size, hop_size):
@@ -81,10 +77,14 @@ def plot_spectrogram(signal, sample_rate, n_fft=2048, hop_length=512):
     plt.show()
 
 if __name__ == "__main__":
-    # Example usage
-    file_path = 'Data\Speaker1gtSamen.wav'  
-    #file_path = 'Data\Speaker1gtSamen.wav'  
-    signal, sample_rate = load_audio(file_path)
+
+    loader = AudioDataLoader(csv_file='Tonaufnahmen\speaker1gtnurwords.csv', audio_file='Tonaufnahmen\speaker1gtnurwords.wav')
+    loader.load_audio()
+    loader.process_csv()
+    audio_segments = loader.create_dataclass_entries()
+      
+    signal = audio_segments[0].audio_data
+    sample_rate = audio_segments[0].sample_rate
     frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
     hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
     print("Sample Rate: ",sample_rate)
