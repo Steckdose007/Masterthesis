@@ -2,7 +2,7 @@ import numpy as np
 import librosa
 import scipy.fft
 import matplotlib.pyplot as plt
-from gmm import AudioDataLoader
+from audiodataloader import AudioDataLoader
 
 
 # Apply Hamming window and frame the signal
@@ -60,7 +60,7 @@ def compute_mfcc_features(signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=
 
 
 # Plot spectrogram with frequencies on the y-axis and time on the x-axis
-def plot_spectrogram(signal, sample_rate, n_fft=2048, hop_length=512):
+def plot_spectrogram(signal, sample_rate, label, n_fft=2048, hop_length=512):
     # Compute the Short-Time Fourier Transform (STFT)
     stft = librosa.stft(signal, n_fft=n_fft, hop_length=hop_length)
     
@@ -71,43 +71,43 @@ def plot_spectrogram(signal, sample_rate, n_fft=2048, hop_length=512):
     plt.figure(figsize=(10, 6))
     librosa.display.specshow(spectrogram_db, sr=sample_rate, hop_length=hop_length, x_axis='time', y_axis='hz')
     plt.colorbar(format='%+2.0f dB')
-    plt.title('Spectrogram (dB)')
+    plt.title(f'Spectrogram (dB) for {label}')
     plt.xlabel('Time (s)')
     plt.ylabel('Frequency (Hz)')
     plt.show()
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(csv_file='Tonaufnahmen\speaker1gtnurwords.csv', audio_file='Tonaufnahmen\speaker1gtnurwords.wav')
+    loader = AudioDataLoader(csv_file='Tonaufnahmen\speaker4gt.csv', audio_file='Tonaufnahmen\speaker4gt.wav', config_file='config.json')
     loader.load_audio()
     loader.process_csv()
-    audio_segments = loader.create_dataclass_entries()
-      
-    signal = audio_segments[0].audio_data
-    sample_rate = audio_segments[0].sample_rate
+    words_segments = loader.create_dataclass_words()
+    word = words_segments[0]
+    signal = word.audio_data
+    sample_rate = word.sample_rate
     frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
     hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
-    print("Sample Rate: ",sample_rate)
+    print(f"Sample Rate for word {word.label}: ",sample_rate)
     # Frame the signal and apply Hamming window
     frames = frame_signal(signal, frame_size, hop_size)
-    print("frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
+    print(f"{word.label} frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
     # Compute the spectral envelope for each frame
     n_fft=2048
     cepstral_order=60
     spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
-    print("spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values. 
+    print(f"{word.label} spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values. 
 
 
     #Some plotting
     # Plot the spectrogram
-    plot_spectrogram(signal, sample_rate)
+    plot_spectrogram(signal, sample_rate, word.label)
     mean_spectral_envelope = np.mean(spectral_envelopes, axis=0)
     # Convert amplitude to dB (logarithmic scale)
     mean_spectral_envelope_db = 20 * np.log10(mean_spectral_envelope + 1e-10)  # Adding a small constant to avoid log(0)
     frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
     # Plot the mean spectral envelope in dB with actual frequency values
     plt.plot(frequencies, mean_spectral_envelope_db, label='Mean Spectral Envelope (dB)', color='blue')
-    plt.title('Mean Spectral Envelope with Frequencies (dB)')
+    plt.title(f'Mean Spectral Envelope with Frequencies (dB) for {word.label}')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Amplitude (dB)')
     plt.legend()
