@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from audiodataloader import AudioDataLoader
 
 
+
 # Apply Hamming window and frame the signal
 def frame_signal(signal, frame_size, hop_size):
     frames = librosa.util.frame(signal, frame_length=frame_size, hop_length=hop_size, axis=0)
@@ -58,6 +59,36 @@ def compute_mfcc_features(signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=
     
     return mfcc_features
 
+def plot_mel_spectrogram(word, phone=None):
+    signal = word.audio_data
+    sample_rate = word.sample_rate
+
+    # Compute Mel-spectrogram
+    mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=128)
+
+    # Convert power spectrogram to decibel (log scale)
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+
+    # Plot the Mel-spectrogram
+    plt.figure(figsize=(10, 6))
+    librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm')
+    plt.colorbar(label='Decibels (dB)')
+    plt.title(f'Mel-Spectrogram for {word.label}')
+
+    if phone:
+        # Adjust phone start and end times relative to the word start (assuming start and end times are in sample indices)
+        phone_start_time = (phone.start_time - word.start_time) / sample_rate
+        phone_end_time = (phone.end_time - word.start_time) / sample_rate
+        # Plot vertical lines for phone start and end times
+        plt.axvline(x=phone_start_time, color='green', linestyle='--', label='Phone Start')
+        plt.axvline(x=phone_end_time, color='red', linestyle='--', label='Phone End')
+
+        plt.legend()
+
+    plt.xlabel('Time (s)')
+    plt.ylabel('Mel Frequency (Hz)')
+    plt.show()
+
 
 # Plot spectrogram with frequencies on the y-axis and time on the x-axis
 def plot_spectrogram(signal, sample_rate, label, n_fft=2048, hop_length=512):
@@ -76,19 +107,44 @@ def plot_spectrogram(signal, sample_rate, label, n_fft=2048, hop_length=512):
     plt.ylabel('Frequency (Hz)')
     plt.show()
 
+def plot_frequencies(spectral_envelopes):#, spectral_envelopes1):
+    # Convert amplitude to dB (logarithmic scale) for both sets of spectral envelopes
+    spectral_envelopes_db = 20 * np.log10(spectral_envelopes + 1e-10)  # Adding small constant to avoid log(0)
+    
+    # Calculate frequency bins
+    frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
+
+    # Plot the first set of spectral envelopes in dB
+    plt.figure(figsize=(10, 6))
+    plt.plot(frequencies, np.mean(spectral_envelopes_db, axis=0), label='Spectral Envelopes interdental', color='blue')
+
+    # Plot the second set of spectral envelopes in dB
+    #spectral_envelopes1_db = 20 * np.log10(spectral_envelopes1 + 1e-10)  # Adding small constant to avoid log(0)
+    #plt.plot(frequencies, np.mean(spectral_envelopes1_db, axis=0), label='Spectral Envelopes normal', color='red')
+
+    # Add titles and labels
+    plt.title(f'Spectral Envelopes Comparison for {word.label}')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Amplitude (dB)')
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(csv_file='Tonaufnahmen\speaker4gt.csv', audio_file='Tonaufnahmen\speaker4gt.wav', config_file='config.json')
-    loader.load_audio()
-    loader.process_csv()
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True)    
     words_segments = loader.create_dataclass_words()
-    word = words_segments[0]
+    phone_segments = loader.create_dataclass_phones()
+    phone = phone_segments[82]
+    word = words_segments[36]
     signal = word.audio_data
     sample_rate = word.sample_rate
+
+ 
+    # Frame the signal and apply Hamming window
     frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
     hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
     print(f"Sample Rate for word {word.label}: ",sample_rate)
-    # Frame the signal and apply Hamming window
     frames = frame_signal(signal, frame_size, hop_size)
     print(f"{word.label} frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
     # Compute the spectral envelope for each frame
@@ -96,28 +152,17 @@ if __name__ == "__main__":
     cepstral_order=60
     spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
     print(f"{word.label} spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values. 
-
+    
 
     #Some plotting
-    # Plot the spectrogram
-    plot_spectrogram(signal, sample_rate, word.label)
-    mean_spectral_envelope = np.mean(spectral_envelopes, axis=0)
-    # Convert amplitude to dB (logarithmic scale)
-    mean_spectral_envelope_db = 20 * np.log10(mean_spectral_envelope + 1e-10)  # Adding a small constant to avoid log(0)
-    frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
-    # Plot the mean spectral envelope in dB with actual frequency values
-    plt.plot(frequencies, mean_spectral_envelope_db, label='Mean Spectral Envelope (dB)', color='blue')
-    plt.title(f'Mean Spectral Envelope with Frequencies (dB) for {word.label}')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Amplitude (dB)')
-    plt.legend()
-    plt.show()
+    #plot_spectrogram(signal, sample_rate, word.label)
+    plot_frequencies(spectral_envelopes)#,spectral_envelopes1)
+    #plot_mel_spectrogram(word,phone)
 
 
     # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
     energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
     print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
-
 
 
     # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters

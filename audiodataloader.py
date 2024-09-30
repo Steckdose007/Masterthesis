@@ -23,7 +23,7 @@ Sentences are Hardcoded in the config and are divided by their own biginning and
 Phones are automatically extracted from all words with ["z","s","Z","S","ts"].
 Dividing_word is in the config the word which divedes the word segemtns from the sentences in the audio. EG. Xylophon
 returns: a list with AudioSegment objects which either has phones,words,sentences. To get one of those set according parameter to True.
- 
+
         
 
 """
@@ -55,7 +55,6 @@ class AudioDataLoader:
         self.phones =["z","s","Z","S","ts"]
         self.files = self.get_audio_csv_file_pairs()
         self.folder_path = None
-        #self.process_csv()
         self.dividing_word
 
 
@@ -81,12 +80,10 @@ class AudioDataLoader:
         # Find pairs based on the base name (without the extension)
         file_pairs = []
         for wav_file in wav_files:
-            print(wav_file)
             base_name = os.path.splitext(wav_file)[0]
             corresponding_csv = base_name + '.csv'
             if corresponding_csv in csv_files:
                 self.process_csv(os.path.join(self.folder_path, wav_file),os.path.join(self.folder_path, corresponding_csv))
-        print(file_pairs)
         return file_pairs
 
     def process_csv(self,wav_file,csv_file):
@@ -138,9 +135,9 @@ class AudioDataLoader:
                             if not dividing_word:
                                 end_time = start_time  # because the word ends at the beginning of the pause
                                 if self.word_bool:
-                                    segment = audio_data[int(start_time):int(end_time)]
+                                    segment = audio_data[(int(word_start)):(int(end_time))]
                                     self.word_segments.append(
-                                        AudioSegment(start_time=start_time, 
+                                        AudioSegment(start_time=word_start, 
                                                     end_time=end_time, 
                                                     audio_data=segment, 
                                                     sample_rate=sample_rate, 
@@ -202,17 +199,17 @@ class AudioDataLoader:
                         )
                 else:
                     if self.word_bool:
-                        segment = audio_data[int(start_time):int(end_time)]
+                        segment = audio_data[int(word_start):int(end_time)]
                         self.word_segments.append(
-                            AudioSegment(start_time=start_time, 
+                            AudioSegment(start_time=word_start, 
                                         end_time=end_time, 
                                         audio_data=segment, 
                                         sample_rate=sample_rate, 
                                         label=word_label)
                         )
             self.audio_data = None
-            print(f"Audio processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
-            print(f"Audio ready to rumbel.")
+            print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
+            
 
     def create_dataclass_words(self) -> List[AudioSegment]:
         return self.word_segments
@@ -227,7 +224,7 @@ class AudioDataLoader:
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= True)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= True)
 
     phones_segments = loader.create_dataclass_phones()
     print(np.shape(phones_segments))
