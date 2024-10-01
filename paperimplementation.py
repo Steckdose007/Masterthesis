@@ -3,8 +3,12 @@ import librosa
 import scipy.fft
 import matplotlib.pyplot as plt
 from audiodataloader import AudioDataLoader
-
-
+import train_gmm
+from sklearn.preprocessing import LabelEncoder
+import numpy as np
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 # Apply Hamming window and frame the signal
 def frame_signal(signal, frame_size, hop_size):
@@ -130,43 +134,188 @@ def plot_frequencies(spectral_envelopes):#, spectral_envelopes1):
     plt.show()
 
 
+def pad_mfccs(mfccs):
+    """
+    Pad MFCC sequences to the same length as the longest MFCC sequence.
+    
+    Parameters:
+    - mfccs: List of MFCC sequences (each is a 2D array with shape (n_frames, n_features)).
+    - max_length: The length to pad each MFCC sequence to (equal to the longest MFCC sequence).
+    
+    Returns:
+    - padded_mfccs: List of padded MFCC sequences with shape (max_length, n_features).
+    """
+    max_length = max([mfcc.shape[0] for mfcc in mfccs])
+    padded_mfccs = []
+    for mfcc in mfccs:
+        n_frames, n_features = mfcc.shape
+        if n_frames < max_length:
+            # Pad with zeros if the sequence is shorter than the max length
+            padding = np.zeros((max_length - n_frames, n_features))
+            padded_mfcc = np.vstack((mfcc, padding))
+        else:
+            # No truncation needed since we want to match the longest MFCC
+            padded_mfcc = mfcc
+        padded_mfccs.append(padded_mfcc)
+    return padded_mfccs
+
+
+def get_features(dataclass, energy_bool = False):
+    mfcc_list = []
+    for word in words_segments:
+        signal = word.audio_data
+        sample_rate = word.sample_rate
+        # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters
+        mfcc = train_gmm.compute_mfcc_features(signal, sample_rate)
+        #Transpose to get it like that: (n_components, n_features) for the covarianve_type: diag
+        mfcc_list.append(np.transpose(mfcc))
+
+    print(len(mfcc_list),np.shape(mfcc_list[0]))
+    # Concatenate all MFCC features into a single matrix So (n_frames,36 features)
+    mfcc_features = np.concatenate(mfcc_list, axis=0)
+    print(np.shape(mfcc_features))
+    print("Training UBM...")
+    ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)
+    print("Training finished!")
+
+    # Step 2: Adapt the UBM for each word
+    print("Adapting UBM for each word. Also get mfcc and energy.")
+    labels = []
+    supervectors = []
+    energys = []
+    mfccs =[]
+    simmplified_supervectors = []
+    for word in words_segments:
+        signal = word.audio_data
+        mfcc = train_gmm.compute_mfcc_features(signal, word.sample_rate)
+        mfcc = np.transpose(mfcc)  # Shape it to (n_frames, n_features)
+
+        # Adapt the UBM to this word
+        #print("mfcc word adaption shape:", np.shape(mfcc))
+        adapted_gmm = train_gmm.adapt_ubm_map(ubm, mfcc)
+        
+        # Step 3: Extract the supervector
+        supervector, simmplified_supervector = train_gmm.extract_supervector(adapted_gmm)
+        #print(np.shape(supervector),np.shape(simmplified_supervector))
+        supervectors.append(supervector)
+        simmplified_supervectors.append(simmplified_supervector)
+        labels.append(word.label_path)
+        mfccs.append(mfcc)
+        if energy_bool:
+            # Frame the signal and apply Hamming window
+            frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
+            hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
+            frames = frame_signal(signal, frame_size, hop_size)
+            # Compute the spectral envelope for each frame
+            n_fft=2048
+            cepstral_order=60
+            spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
+            # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
+            energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
+            energys.append(energy_features)
+
+    if energy_bool:
+            print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} Simplified Supervectors,{len(mfccs) } MFCCs and {len(energys)} Energy.")
+            return supervectors,simmplified_supervectors,mfccs,energys, labels
+    print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} simplified supervectors,{len(mfccs) } MFCCs.")
+    return supervectors,simmplified_supervectors,mfccs, labels
+
+
+def concatenate_features(supervectors, simplified_supervectors, mfccs, energys= None):
+    """
+    Concatenate multiple feature types into a single feature vector for each sample.
+    
+    Parameters:
+    - supervectors: List of full supervectors for each sample.
+    - simplified_supervectors: List of simplified supervectors for each sample.
+    - mfccs: List of MFCC features for each sample.
+    - energys: List of energy features for each sample.
+    
+    Returns:
+    - concatenated_features: A 2D numpy array where each row is a concatenated feature vector for a sample.
+    """
+    #Pad all MFCC sequences to the max length
+    mfccs_padded = pad_mfccs(mfccs)
+    concatenated_features = []
+    if energys == None:
+        concatenated_features = []
+        for i in range(len(supervectors)):
+            features = np.concatenate([
+                supervectors[i],                  # Supervector
+                simplified_supervectors[i],       # Simplified supervector
+                mfccs_padded[i].flatten()                # MFCCs (flattened to make a 1D vector)
+            ])
+            concatenated_features.append(features)
+        
+        return np.array(concatenated_features)
+    else:
+        for i in range(len(supervectors)):
+            features = np.concatenate([
+                supervectors[i],                  # Supervector
+                simplified_supervectors[i],       # Simplified supervector
+                mfccs_padded[i].flatten(),               # MFCCs (flattened to make a 1D vector)
+                energys[i]                        # Energy features
+            ])
+            concatenated_features.append(features)
+        
+        return np.array(concatenated_features)
+
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True)    
     words_segments = loader.create_dataclass_words()
     phone_segments = loader.create_dataclass_phones()
-    phone = phone_segments[82]
-    word = words_segments[36]
-    signal = word.audio_data
-    sample_rate = word.sample_rate
+    # phone = phone_segments[82]
+    # word = words_segments[36]
+    # signal = word.audio_data
+    # sample_rate = word.sample_rate
 
- 
-    # Frame the signal and apply Hamming window
-    frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
-    hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
-    print(f"Sample Rate for word {word.label}: ",sample_rate)
-    frames = frame_signal(signal, frame_size, hop_size)
-    print(f"{word.label} frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
-    # Compute the spectral envelope for each frame
-    n_fft=2048
-    cepstral_order=60
-    spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
-    print(f"{word.label} spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values. 
-    
+    # # Frame the signal and apply Hamming window
+    # frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
+    # hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
+    # print(f"Sample Rate for word {word.label}: ",sample_rate)
+    # frames = frame_signal(signal, frame_size, hop_size)
+    # print(f"{word.label} frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
+    # # Compute the spectral envelope for each frame
+    # n_fft=2048
+    # cepstral_order=60
+    # spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
+    # print(f"{word.label} spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values.     
 
-    #Some plotting
-    #plot_spectrogram(signal, sample_rate, word.label)
-    plot_frequencies(spectral_envelopes)#,spectral_envelopes1)
-    #plot_mel_spectrogram(word,phone)
+    # #Some plotting
+    # #plot_spectrogram(signal, sample_rate, word.label)
+    # #plot_frequencies(spectral_envelopes)#,spectral_envelopes1)
+    # #plot_mel_spectrogram(word,phone)
+
+    # # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
+    # energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
+    # print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
+
+    # # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters
+    # mfcc_features = compute_mfcc_features(signal, sample_rate)
+    # # mfcc_features will have the shape (36, num_frames), where 36 is the number of MFCC coefficients (12 static, 24 dynamic)
+    # print(f'MFCC features shape: {mfcc_features.shape}')
 
 
-    # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
-    energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
-    print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
+    supervectors, simplified_supervectors, mfccs, energys, labels = get_features(words_segments,energy_bool=True)
 
+    label_encoder = LabelEncoder()
+    # Fit the encoder and transform the labels into numeric values
+    encoded_labels = label_encoder.fit_transform(labels)
 
-    # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters
-    mfcc_features = compute_mfcc_features(signal, sample_rate)
-    # mfcc_features will have the shape (36, num_frames), where 36 is the number of MFCC coefficients (12 static, 24 dynamic)
-    print(f'MFCC features shape: {mfcc_features.shape}')
+    # Concatenate the features for each sample
+    X = concatenate_features(supervectors, simplified_supervectors, mfccs, energys)
+
+    print("Create Train/Test split")
+    X_train, X_test, y_train, y_test = train_test_split(X, encoded_labels, test_size=0.2, random_state=42)
+
+    # Create and train the SVM with a polynomial kernel
+    svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+    print("Train SVM")
+    svm_classifier.fit(X_train, y_train)
+    print("Test SVM")
+    y_pred = svm_classifier.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy of the SVM classifier: {accuracy:.2f}")
 
