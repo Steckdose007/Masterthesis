@@ -175,12 +175,13 @@ def extract_supervector(gmm):
     """
     means = gmm.means_.flatten()  # Mean vectors of the Gaussian components
     covariances = gmm.covariances_.flatten()  # Diagonal covariance elements of the Gaussian components
-    weights = gmm.weights_.flatten()  # Mixture weights of the Gaussian components
+    weights = gmm.weights_  # Mixture weights of the Gaussian components
     
     # Concatenate the means, covariances, and weights into a single supervector
     supervector = np.concatenate([means, covariances, weights])
+    simplified_supervector = weights
     
-    return supervector
+    return supervector, simplified_supervector
 
 
 if __name__ == "__main__":
@@ -207,6 +208,7 @@ if __name__ == "__main__":
     # Step 2: Adapt the UBM for each word
     print("Adapting UBM for each word...")
     supervectors = []
+    simmplified_supervectors = []
     for word in words_segments:
         signal = word.audio_data
         mfcc = compute_mfcc_features(signal, word.sample_rate)
@@ -217,9 +219,11 @@ if __name__ == "__main__":
         adapted_gmm = adapt_ubm_map(ubm, mfcc)
         
         # Step 3: Extract the supervector
-        supervector = extract_supervector(adapted_gmm)
+        supervector, simmplified_supervector = extract_supervector(adapted_gmm)
+        #print(np.shape(supervector),np.shape(simmplified_supervector))
         supervectors.append(supervector)
+        simmplified_supervectors.append(simmplified_supervector)
     
     # supervectors now contains the supervectors for each word
-    print(f"Extracted {len(supervectors)} supervectors.")
+    print(f"Extracted {len(supervectors)} supervectors and {len(simmplified_supervectors)} simplified supervectors")
 

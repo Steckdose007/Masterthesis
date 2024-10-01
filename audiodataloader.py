@@ -42,6 +42,7 @@ class AudioSegment:
     audio_data: np.ndarray
     sample_rate: int
     label: str  
+    label_path: str
 
 class AudioDataLoader:
     def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False):
@@ -56,6 +57,7 @@ class AudioDataLoader:
         self.files = self.get_audio_csv_file_pairs()
         self.folder_path = None
         self.dividing_word
+        self.label_path = None
 
 
     def load_config(self, config_file: str):
@@ -74,16 +76,18 @@ class AudioDataLoader:
         Returns:
         - A list of tuples, each containing a pair of .wav and .csv file paths.
         """
-        wav_files = [f for f in os.listdir(self.folder_path) if f.endswith('.wav')]
-        csv_files = [f for f in os.listdir(self.folder_path) if f.endswith('.csv')]
+        for path in self.folder_path:
+            self.label_path = os.path.basename(path)
+            wav_files = [f for f in os.listdir(path) if f.endswith('.wav')]
+            csv_files = [f for f in os.listdir(path) if f.endswith('.csv')]
 
-        # Find pairs based on the base name (without the extension)
-        file_pairs = []
-        for wav_file in wav_files:
-            base_name = os.path.splitext(wav_file)[0]
-            corresponding_csv = base_name + '.csv'
-            if corresponding_csv in csv_files:
-                self.process_csv(os.path.join(self.folder_path, wav_file),os.path.join(self.folder_path, corresponding_csv))
+            # Find pairs based on the base name (without the extension)
+            file_pairs = []
+            for wav_file in wav_files:
+                base_name = os.path.splitext(wav_file)[0]
+                corresponding_csv = base_name + '.csv'
+                if corresponding_csv in csv_files:
+                    self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
         return file_pairs
 
     def process_csv(self,wav_file,csv_file):
@@ -124,7 +128,8 @@ class AudioDataLoader:
                                     end_time=end_time, 
                                     audio_data=segment, 
                                     sample_rate= sample_rate, 
-                                    label=row[3])
+                                    label=row[3],
+                                    label_path=self.label_path)
                     )
                     
                 # Pause handling: Pauses should be included in sentences, not treated as a break
@@ -141,7 +146,8 @@ class AudioDataLoader:
                                                     end_time=end_time, 
                                                     audio_data=segment, 
                                                     sample_rate=sample_rate, 
-                                                    label=word_label)
+                                                    label=word_label,
+                                                    label_path=self.label_path)
                                     )
                                 # Check if we are past the word "Xylophone"
                                 if word_label == self.dividing_word:
@@ -159,7 +165,8 @@ class AudioDataLoader:
                                                 end_time=sentence_end, 
                                                 audio_data=segment, 
                                                 sample_rate=sample_rate, 
-                                                label=sentence_label)
+                                                label=sentence_label,
+                                                label_path=self.label_path)
                                 )
                             remaining_sentences.remove(current_sentence)  # Remove the processed sentence
                             current_sentence = None  
@@ -195,7 +202,8 @@ class AudioDataLoader:
                                         end_time=sentence_end, 
                                         audio_data=segment, 
                                         sample_rate=sample_rate, 
-                                        label=sentence_label)
+                                        label=sentence_label,
+                                        label_path=self.label_path)
                         )
                 elif not dividing_word:
                     if self.word_bool:
@@ -205,7 +213,8 @@ class AudioDataLoader:
                                         end_time=end_time, 
                                         audio_data=segment, 
                                         sample_rate=sample_rate, 
-                                        label=word_label)
+                                        label=word_label,
+                                        label_path=self.label_path)
                         )
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
@@ -234,14 +243,14 @@ if __name__ == "__main__":
     print(np.shape(sentences_segments),type(sentences_segments))
     print("PHONES::::::::::::::::::::::::::::::")
     for i in phones_segments:
-        print((i.end_time-i.start_time)/i.sample_rate)
+        print((i.end_time-i.start_time)/i.sample_rate,i.label_path)
     
     print("WORDS:::::::::::::::::::::::::::::::")
 
     for i in words_segments:
-        print((i.end_time-i.start_time)/i.sample_rate)
+        print((i.end_time-i.start_time)/i.sample_rate,i.label_path)
 
     print("SENTENCES:::::::::::::::::::::::::::")
 
     for i in sentences_segments:
-        print((i.end_time-i.start_time)/i.sample_rate)
+        print((i.end_time-i.start_time)/i.sample_rate,i.label_path)

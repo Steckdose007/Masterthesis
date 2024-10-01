@@ -16,6 +16,6 @@
       ["Die", "Reisen"]
     ],
     "dividing_word": "Xylophon",
-    "folder_path":"Data"
+    "folder_path":["Data/normal","Data/sigmatism"]
   }
   
