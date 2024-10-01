@@ -1,6 +1,5 @@
 import numpy as np
 import librosa
-import scipy.fft
 import matplotlib.pyplot as plt
 from audiodataloader import AudioDataLoader
 from sklearn.mixture import GaussianMixture
@@ -48,26 +47,121 @@ def train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6):
     
     return gmm
 
-def adapt_ubm(ubm, mfcc_features, max_iter=100, reg_covar=1e-6):
+def compute_posterior_probs(gmm, mfcc_features):
     """
-    Adapt the UBM to new MFCC features using a simplified version of MAP adaptation.
-    
+    Compute the posterior probabilities (responsibilities) for each Gaussian component 
+    in the UBM for the given MFCC features.
+
     Parameters:
-    - ubm: A pre-trained Universal Background Model (UBM).
-    - mfcc_features: The MFCC features of the new utterance or speaker.
-    - max_iter: Maximum number of iterations for fitting the adapted GMM.
-    
+    - gmm: The trained GMM (UBM).
+    - mfcc_features: A numpy array of shape (n_frames, n_features).
+
     Returns:
-    - adapted_gmm: The adapted GaussianMixture model.
+    - responsibilities: A numpy array of shape (n_frames, n_components), which contains 
+      the posterior probabilities (responsibilities) for each frame and Gaussian component.
     """
-    adapted_gmm = GaussianMixture(n_components=ubm.n_components, covariance_type='diag', 
-                                  max_iter=max_iter, random_state=42, reg_covar=reg_covar, 
-                                  means_init=ubm.means_, precisions_init=ubm.precisions_)
-    
-    # Fit the new GMM to the MFCC features (MAP adaptation approximation)
-    adapted_gmm.fit(mfcc_features)
-    
+    log_prob_norm, responsibilities = gmm._estimate_log_prob_resp(mfcc_features)
+    return responsibilities
+
+def update_means(ubm, responsibilities, mfcc_features, relevance_factor):
+    """
+    Update the means of the UBM components using MAP adaptation.
+
+    Parameters:
+    - ubm: The Universal Background Model (GMM).
+    - responsibilities: The posterior probabilities for each Gaussian component (n_frames, n_components).
+    - mfcc_features: The MFCC features (n_frames, n_features).
+    - relevance_factor: The MAP relevance factor (controls the influence of the UBM means vs. new data).
+
+    Returns:
+    - adapted_means: The adapted means of the GMM components.
+    """
+    # Calculate effective number of data points for each component (N_k)
+    N_k = np.sum(responsibilities, axis=0)  # Shape: (n_components,)
+
+    # Calculate the new data means (weighted by responsibilities)
+    weighted_sum = np.dot(responsibilities.T, mfcc_features)  # Shape: (n_components, n_features)
+
+    # Update the means using MAP formula
+    adapted_means = (N_k[:, np.newaxis] * weighted_sum + relevance_factor * ubm.means_) / (N_k[:, np.newaxis] + relevance_factor)
+
+    return adapted_means
+
+def update_covariances(ubm, responsibilities, mfcc_features, adapted_means, relevance_factor):
+    """
+    Update the covariances of the UBM components using MAP adaptation.
+
+    Parameters:
+    - ubm: The Universal Background Model (GMM).
+    - responsibilities: The posterior probabilities for each Gaussian component (n_frames, n_components).
+    - mfcc_features: The MFCC features (n_frames, n_features).
+    - adapted_means: The adapted means of the GMM components (from the update_means step).
+    - relevance_factor: The MAP relevance factor (controls the influence of the UBM covariances vs. new data).
+
+    Returns:
+    - adapted_covariances: The adapted covariances of the GMM components.
+    """
+    # Calculate effective number of data points for each component (N_k)
+    N_k = np.sum(responsibilities, axis=0)  # Shape: (n_components,)
+
+    # Calculate the weighted sum of square deviations from the adapted means
+    diff = mfcc_features[:, np.newaxis, :] - adapted_means  # Shape: (n_frames, n_components, n_features)
+    weighted_diff = responsibilities[:, :, np.newaxis] * (diff ** 2)
+
+    # Compute new covariances based on weighted differences
+    adapted_covariances = (np.sum(weighted_diff, axis=0) + relevance_factor * ubm.covariances_) / (N_k[:, np.newaxis] + relevance_factor)
+
+    return adapted_covariances
+
+def update_weights(ubm, responsibilities, relevance_factor):
+    """
+    Update the weights of the UBM components using MAP adaptation.
+
+    Parameters:
+    - ubm: The Universal Background Model (GMM).
+    - responsibilities: The posterior probabilities for each Gaussian component (n_frames, n_components).
+    - relevance_factor: The MAP relevance factor (controls the influence of the UBM weights vs. new data).
+
+    Returns:
+    - adapted_weights: The adapted weights of the GMM components.
+    """
+    # Calculate effective number of data points for each component (N_k)
+    N_k = np.sum(responsibilities, axis=0)  # Shape: (n_components,)
+
+    # Update the weights using MAP formula
+    adapted_weights = (N_k + relevance_factor * ubm.weights_) / (np.sum(N_k) + relevance_factor)
+
+    return adapted_weights
+
+def adapt_ubm_map(ubm, mfcc_features, relevance_factor=16):
+    """
+    Perform MAP adaptation of the UBM on new MFCC features.
+
+    Parameters:
+    - ubm: The Universal Background Model (GMM).
+    - mfcc_features: A numpy array of MFCC features (n_frames, n_features).
+    - relevance_factor: The MAP relevance factor (typically between 10 and 20).
+
+    Returns:
+    - adapted_gmm: A new GMM with adapted parameters.
+    """
+    # Compute the posterior probabilities (responsibilities)
+    responsibilities = compute_posterior_probs(ubm, mfcc_features)
+
+    # Update GMM parameters (means, covariances, and weights) using MAP adaptation
+    adapted_means = update_means(ubm, responsibilities, mfcc_features, relevance_factor)
+    adapted_covariances = update_covariances(ubm, responsibilities, mfcc_features, adapted_means, relevance_factor)
+    adapted_weights = update_weights(ubm, responsibilities, relevance_factor)
+
+    # Create the adapted GMM
+    adapted_gmm = GaussianMixture(n_components=ubm.n_components, covariance_type='diag')
+    adapted_gmm.means_ = adapted_means
+    adapted_gmm.covariances_ = adapted_covariances
+    adapted_gmm.weights_ = adapted_weights
+    adapted_gmm.precisions_cholesky_ = 1 / np.sqrt(adapted_covariances)
+
     return adapted_gmm
+
 
 def extract_supervector(gmm):
     """
@@ -107,7 +201,7 @@ if __name__ == "__main__":
     mfcc_features = np.concatenate(mfcc_list, axis=0)
     print(np.shape(mfcc_features))
     print("Training UBM...")
-    ubm = train_ubm(mfcc_features)
+    ubm = train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)
     print("Training finished!")
 
     # Step 2: Adapt the UBM for each word
@@ -119,7 +213,8 @@ if __name__ == "__main__":
         mfcc = np.transpose(mfcc)  # Shape it to (n_frames, n_features)
 
         # Adapt the UBM to this word
-        adapted_gmm = adapt_ubm(ubm, mfcc)
+        #print("mfcc word adaption shape:", np.shape(mfcc))
+        adapted_gmm = adapt_ubm_map(ubm, mfcc)
         
         # Step 3: Extract the supervector
         supervector = extract_supervector(adapted_gmm)

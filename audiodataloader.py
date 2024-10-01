@@ -197,7 +197,7 @@ class AudioDataLoader:
                                         sample_rate=sample_rate, 
                                         label=sentence_label)
                         )
-                else:
+                elif not dividing_word:
                     if self.word_bool:
                         segment = audio_data[int(word_start):int(end_time)]
                         self.word_segments.append(
@@ -232,3 +232,16 @@ if __name__ == "__main__":
     print(np.shape(words_segments))
     sentences_segments = loader.create_dataclass_sentences()
     print(np.shape(sentences_segments),type(sentences_segments))
+    print("PHONES::::::::::::::::::::::::::::::")
+    for i in phones_segments:
+        print((i.end_time-i.start_time)/i.sample_rate)
+    
+    print("WORDS:::::::::::::::::::::::::::::::")
+
+    for i in words_segments:
+        print((i.end_time-i.start_time)/i.sample_rate)
+
+    print("SENTENCES:::::::::::::::::::::::::::")
+
+    for i in sentences_segments:
+        print((i.end_time-i.start_time)/i.sample_rate)
