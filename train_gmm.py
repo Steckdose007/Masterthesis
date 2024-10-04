@@ -15,16 +15,15 @@ def compute_mfcc_features(signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=
                                  n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
     
     # Compute the first-order difference (Delta MFCCs) using a 5-frame window
-    mfcc_delta = librosa.feature.delta(mfccs, width=5)
+    mfcc_delta = librosa.feature.delta(mfccs, width=3)
     
     # Compute the second-order difference (Delta-Delta MFCCs)
-    mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=5)
+    mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
     
     # Concatenate static, delta, and delta-delta features to form a 36-dimensional feature vector per frame
     mfcc_features = np.concatenate([mfccs, mfcc_delta, mfcc_delta2], axis=0)
     
     return mfcc_features
-
 
 def train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6):
     """

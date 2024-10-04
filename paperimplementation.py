@@ -8,8 +8,8 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, roc_curve
+import pandas as pd
 # Apply Hamming window and frame the signal
 def frame_signal(signal, frame_size, hop_size):
     frames = librosa.util.frame(signal, frame_length=frame_size, hop_length=hop_size, axis=0)
@@ -156,24 +156,23 @@ def pad_mfccs(mfccs):
         else:
             # No truncation needed since we want to match the longest MFCC
             padded_mfcc = mfcc
-        padded_mfccs.append(padded_mfcc)
+        padded_mfccs.append(padded_mfcc.flatten())
     return padded_mfccs
 
 
 def get_features(dataclass, energy_bool = False):
     mfcc_list = []
-    for word in words_segments:
-        signal = word.audio_data
-        sample_rate = word.sample_rate
+    for segment in dataclass:
+        signal = segment.audio_data
+        sample_rate = segment.sample_rate
+        #print(segment.label,segment.label_path)
         # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters
         mfcc = train_gmm.compute_mfcc_features(signal, sample_rate)
         #Transpose to get it like that: (n_components, n_features) for the covarianve_type: diag
         mfcc_list.append(np.transpose(mfcc))
 
-    print(len(mfcc_list),np.shape(mfcc_list[0]))
     # Concatenate all MFCC features into a single matrix So (n_frames,36 features)
     mfcc_features = np.concatenate(mfcc_list, axis=0)
-    print(np.shape(mfcc_features))
     print("Training UBM...")
     ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)
     print("Training finished!")
@@ -185,9 +184,9 @@ def get_features(dataclass, energy_bool = False):
     energys = []
     mfccs =[]
     simmplified_supervectors = []
-    for word in words_segments:
-        signal = word.audio_data
-        mfcc = train_gmm.compute_mfcc_features(signal, word.sample_rate)
+    for segment in dataclass:
+        signal = segment.audio_data
+        mfcc = train_gmm.compute_mfcc_features(signal, segment.sample_rate)
         mfcc = np.transpose(mfcc)  # Shape it to (n_frames, n_features)
 
         # Adapt the UBM to this word
@@ -199,7 +198,7 @@ def get_features(dataclass, energy_bool = False):
         #print(np.shape(supervector),np.shape(simmplified_supervector))
         supervectors.append(supervector)
         simmplified_supervectors.append(simmplified_supervector)
-        labels.append(word.label_path)
+        labels.append(segment.label_path)
         mfccs.append(mfcc)
         if energy_bool:
             # Frame the signal and apply Hamming window
@@ -243,7 +242,7 @@ def concatenate_features(supervectors, simplified_supervectors, mfccs, energys= 
             features = np.concatenate([
                 supervectors[i],                  # Supervector
                 simplified_supervectors[i],       # Simplified supervector
-                mfccs_padded[i].flatten()                # MFCCs (flattened to make a 1D vector)
+                mfccs_padded[i]               # MFCCs (flattened to make a 1D vector)
             ])
             concatenated_features.append(features)
         
@@ -253,7 +252,7 @@ def concatenate_features(supervectors, simplified_supervectors, mfccs, energys= 
             features = np.concatenate([
                 supervectors[i],                  # Supervector
                 simplified_supervectors[i],       # Simplified supervector
-                mfccs_padded[i].flatten(),               # MFCCs (flattened to make a 1D vector)
+                mfccs_padded[i],               # MFCCs (flattened to make a 1D vector)
                 energys[i]                        # Energy features
             ])
             concatenated_features.append(features)
@@ -261,13 +260,35 @@ def concatenate_features(supervectors, simplified_supervectors, mfccs, energys= 
         return np.array(concatenated_features)
 
 
+def compute_metrics(y_true, y_pred, y_pred_proba):
+    
+    # Recognition Rate (RR) = Accuracy
+    RR = accuracy_score(y_true, y_pred)
+    # Recognition Rate for Normal class (Rn) and Pathological class (Rp)
+    Rn = recall_score(y_true, y_pred, pos_label=0)  # Recall for class 0 (Normal class)
+    Rp = recall_score(y_true, y_pred, pos_label=1)  # Recall for class 1 (Pathological class)
+    # Class-wise Averaged Recognition Rate (CL)
+    CL = (Rn + Rp) / 2   
+    # Area Under the Curve (AUC)
+    AUC = roc_auc_score(y_true, y_pred_proba[:, 1])  # Use probabilities for positive class   
+    return {
+        'RR': float(round(RR, 2)),
+        'Rn': float(round(Rn, 2)),
+        'Rp': float(round(Rp, 2)),
+        'CL': float(round(CL, 2)),
+        'AUC': float(round(AUC, 2))
+    }
+
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True)    
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True,get_buffer=True)    
     words_segments = loader.create_dataclass_words()
     phone_segments = loader.create_dataclass_phones()
+    sentence_segments = loader.create_dataclass_sentences()
     # phone = phone_segments[82]
-    # word = words_segments[36]
+    # word1 = words_segments[36]
+    # word = sentence_segments[0]
+    # print(word)
     # signal = word.audio_data
     # sample_rate = word.sample_rate
 
@@ -299,23 +320,41 @@ if __name__ == "__main__":
 
 
     supervectors, simplified_supervectors, mfccs, energys, labels = get_features(words_segments,energy_bool=True)
-
+    
     label_encoder = LabelEncoder()
     # Fit the encoder and transform the labels into numeric values
     encoded_labels = label_encoder.fit_transform(labels)
 
     # Concatenate the features for each sample
-    X = concatenate_features(supervectors, simplified_supervectors, mfccs, energys)
+    #X = concatenate_features(supervectors, simplified_supervectors, mfccs, energys)
+    #X= pad_mfccs(mfccs)
+    X = energys
+    #X= simplified_supervectors
+    #X= supervectors
+    X = [supervectors, simplified_supervectors, pad_mfccs(mfccs), energys]
+    descriptions = ['Supervectors', 'SimplifiedSupervectors', 'MFCCs', 'Energy']
+    m = []
+    for i in range(4):
+        #print("Shape of Train Tensor: ", np.shape(X[i]))
+        X_train, X_test, y_train, y_test = train_test_split(X[i], encoded_labels, test_size=0.2, random_state=42)
 
-    print("Create Train/Test split")
-    X_train, X_test, y_train, y_test = train_test_split(X, encoded_labels, test_size=0.2, random_state=42)
+        # Create and train the SVM with a polynomial kernel
+        svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+        svm_classifier.fit(X_train, y_train)
+        y_pred = svm_classifier.predict(X_test)
+        #get predicted probabilities
+        svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
+        svm_prob.fit(X_train, y_train)
+        y_pred_proba = svm_prob.predict_proba(X_test)
 
-    # Create and train the SVM with a polynomial kernel
-    svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
-    print("Train SVM")
-    svm_classifier.fit(X_train, y_train)
-    print("Test SVM")
-    y_pred = svm_classifier.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy of the SVM classifier: {accuracy:.2f}")
+        # Compute the metrics
+        metrics = compute_metrics(y_test, y_pred, y_pred_proba)
+        print(metrics)
+        m.append(metrics)
+
+    df_metrics = pd.DataFrame(m)
+    df_metrics.insert(0, 'Description', descriptions)
+    # Convert the DataFrame to LaTeX format
+    latex_table = df_metrics.to_latex(index=False,float_format="{:.2f}".format)
+    print(latex_table)
 
