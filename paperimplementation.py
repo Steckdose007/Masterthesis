@@ -2,9 +2,9 @@ import numpy as np
 import librosa
 import scipy.fft
 import matplotlib.pyplot as plt
-from audiodataloader import AudioDataLoader
+from audiodataloader import AudioDataLoader, AudioSegment
 import train_gmm
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 import numpy as np
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
@@ -178,18 +178,14 @@ def get_features(dataclass, energy_bool = False):
     print("Training finished!")
 
     # Step 2: Adapt the UBM for each word
-    print("Adapting UBM for each word. Also get mfcc and energy.")
     labels = []
     supervectors = []
     energys = []
-    mfccs =[]
     simmplified_supervectors = []
-    for segment in dataclass:
+    for n,segment in enumerate(dataclass):
         signal = segment.audio_data
-        mfcc = train_gmm.compute_mfcc_features(signal, segment.sample_rate)
-        mfcc = np.transpose(mfcc)  # Shape it to (n_frames, n_features)
+        mfcc = mfcc_list[n]
 
-        # Adapt the UBM to this word
         #print("mfcc word adaption shape:", np.shape(mfcc))
         adapted_gmm = train_gmm.adapt_ubm_map(ubm, mfcc)
         
@@ -199,7 +195,6 @@ def get_features(dataclass, energy_bool = False):
         supervectors.append(supervector)
         simmplified_supervectors.append(simmplified_supervector)
         labels.append(segment.label_path)
-        mfccs.append(mfcc)
         if energy_bool:
             # Frame the signal and apply Hamming window
             frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
@@ -212,52 +207,12 @@ def get_features(dataclass, energy_bool = False):
             # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
             energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
             energys.append(energy_features)
-
+    padded_mfccs = pad_mfccs(mfcc_list)
     if energy_bool:
-            print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} Simplified Supervectors,{len(mfccs) } MFCCs and {len(energys)} Energy.")
-            return supervectors,simmplified_supervectors,mfccs,energys, labels
-    print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} simplified supervectors,{len(mfccs) } MFCCs.")
-    return supervectors,simmplified_supervectors,mfccs, labels
-
-
-def concatenate_features(supervectors, simplified_supervectors, mfccs, energys= None):
-    """
-    Concatenate multiple feature types into a single feature vector for each sample.
-    
-    Parameters:
-    - supervectors: List of full supervectors for each sample.
-    - simplified_supervectors: List of simplified supervectors for each sample.
-    - mfccs: List of MFCC features for each sample.
-    - energys: List of energy features for each sample.
-    
-    Returns:
-    - concatenated_features: A 2D numpy array where each row is a concatenated feature vector for a sample.
-    """
-    #Pad all MFCC sequences to the max length
-    mfccs_padded = pad_mfccs(mfccs)
-    concatenated_features = []
-    if energys == None:
-        concatenated_features = []
-        for i in range(len(supervectors)):
-            features = np.concatenate([
-                supervectors[i],                  # Supervector
-                simplified_supervectors[i],       # Simplified supervector
-                mfccs_padded[i]               # MFCCs (flattened to make a 1D vector)
-            ])
-            concatenated_features.append(features)
-        
-        return np.array(concatenated_features)
-    else:
-        for i in range(len(supervectors)):
-            features = np.concatenate([
-                supervectors[i],                  # Supervector
-                simplified_supervectors[i],       # Simplified supervector
-                mfccs_padded[i],               # MFCCs (flattened to make a 1D vector)
-                energys[i]                        # Energy features
-            ])
-            concatenated_features.append(features)
-        
-        return np.array(concatenated_features)
+            print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} Simplified Supervectors,{len(mfcc_list) } MFCCs and {len(energys)} Energy.")
+            return supervectors,simmplified_supervectors,padded_mfccs,energys, labels
+    print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} simplified supervectors,{len(mfcc_list) } MFCCs.")
+    return supervectors,simmplified_supervectors,padded_mfccs, labels
 
 
 def compute_metrics(y_true, y_pred, y_pred_proba):
@@ -281,10 +236,10 @@ def compute_metrics(y_true, y_pred, y_pred_proba):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True,get_buffer=True)    
-    words_segments = loader.create_dataclass_words()
-    phone_segments = loader.create_dataclass_phones()
-    sentence_segments = loader.create_dataclass_sentences()
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=False)
+    phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("words_segments.pkl")
+    sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     # phone = phone_segments[82]
     # word1 = words_segments[36]
     # word = sentence_segments[0]
@@ -320,18 +275,14 @@ if __name__ == "__main__":
 
 
     supervectors, simplified_supervectors, mfccs, energys, labels = get_features(words_segments,energy_bool=True)
-    
     label_encoder = LabelEncoder()
     # Fit the encoder and transform the labels into numeric values
     encoded_labels = label_encoder.fit_transform(labels)
 
-    # Concatenate the features for each sample
-    #X = concatenate_features(supervectors, simplified_supervectors, mfccs, energys)
-    #X= pad_mfccs(mfccs)
+    print(np.shape(supervectors),np.shape(simplified_supervectors),np.shape(mfccs),np.shape(energys),np.shape(labels))
     X = energys
-    #X= simplified_supervectors
-    #X= supervectors
-    X = [supervectors, simplified_supervectors, pad_mfccs(mfccs), energys]
+   
+    X = [supervectors, simplified_supervectors, mfccs, energys]
     descriptions = ['Supervectors', 'SimplifiedSupervectors', 'MFCCs', 'Energy']
     m = []
     for i in range(4):

@@ -3,7 +3,7 @@ import librosa
 import matplotlib.pyplot as plt
 from audiodataloader import AudioDataLoader
 from sklearn.mixture import GaussianMixture
-
+from sklearn.preprocessing import StandardScaler
 # Compute MFCCs, Delta MFCCs, and Delta-Delta MFCCs
 def compute_mfcc_features(signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=25.6e-3, hop_size=10e-3, n_fft=2048):
     # Convert frame and hop size from seconds to samples
@@ -43,7 +43,10 @@ def train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6):
     
     # Fit the GMM on the MFCC features
     gmm.fit(mfcc_features)
-    
+    if gmm.converged_:
+        print(f"GMM converged after {gmm.n_iter_} iterations.")
+    else:
+        print(f"GMM did not converge. Reached the maximum of {max_iter} iterations.")
     return gmm
 
 def compute_posterior_probs(gmm, mfcc_features):
@@ -82,7 +85,15 @@ def update_means(ubm, responsibilities, mfcc_features, relevance_factor):
     weighted_sum = np.dot(responsibilities.T, mfcc_features)  # Shape: (n_components, n_features)
 
     # Update the means using MAP formula
-    adapted_means = (N_k[:, np.newaxis] * weighted_sum + relevance_factor * ubm.means_) / (N_k[:, np.newaxis] + relevance_factor)
+    #adapted_means = (N_k[:, np.newaxis] * weighted_sum + relevance_factor * ubm.means_) / (N_k[:, np.newaxis] + relevance_factor)
+    # Calculate the contribution of the new data mean (first term)
+    data_term = (N_k[:, np.newaxis] / (N_k[:, np.newaxis] + relevance_factor)) * weighted_sum
+
+    # Calculate the contribution of the UBM mean (second term)
+    ubm_term = (relevance_factor / (N_k[:, np.newaxis] + relevance_factor)) * ubm.means_
+
+    # Combine the two terms to get the adapted means
+    adapted_means = data_term + ubm_term
 
     return adapted_means
 
@@ -132,6 +143,22 @@ def update_weights(ubm, responsibilities, relevance_factor):
 
     return adapted_weights
 
+def compute_precision_cholesky(adapted_covariances):
+    """
+    Compute the precision Cholesky decomposition for diagonal covariances.
+    manually computing the precision cholesky and not directly inverting the covariance matrix → no difference.
+    
+    Parameters:
+    - adapted_covariances: Diagonal covariances of the adapted GMM.
+    
+    Returns:
+    - precisions_cholesky: The Cholesky decomposition of the precisions (inverse of the covariances).
+    """
+    precisions = 1.0 / adapted_covariances  # Since we are using diagonal covariance matrices
+    precisions_cholesky = np.sqrt(precisions)  # Cholesky decomposition is equivalent to square root for diagonal matrices
+    
+    return precisions_cholesky
+
 def adapt_ubm_map(ubm, mfcc_features, relevance_factor=16):
     """
     Perform MAP adaptation of the UBM on new MFCC features.
@@ -158,7 +185,7 @@ def adapt_ubm_map(ubm, mfcc_features, relevance_factor=16):
     adapted_gmm.covariances_ = adapted_covariances
     adapted_gmm.weights_ = adapted_weights
     adapted_gmm.precisions_cholesky_ = 1 / np.sqrt(adapted_covariances)
-
+    #adapted_gmm.precisions_cholesky_ = compute_precision_cholesky(adapted_covariances)
     return adapted_gmm
 
 
