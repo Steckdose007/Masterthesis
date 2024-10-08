@@ -36,6 +36,10 @@ from typing import List, Tuple, Union
 import json
 import os
 import matplotlib.pyplot as plt
+import csv
+import pickle
+
+
 
 @dataclass
 class AudioSegment:
@@ -155,6 +159,7 @@ class AudioDataLoader:
         return adjusted_start, adjusted_end
 
     def process_csv(self,wav_file,csv_file):
+        
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
         # Normalize the audio to the range [-1, 1]
@@ -303,8 +308,38 @@ class AudioDataLoader:
                         )
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
-            
+             
+    def save_segments_to_pickle(self,audio_segments: List[AudioSegment], filename: str):
+        """
+        Save the list of AudioSegment objects into a Pickle file.
+        
+        Parameters:
+        - audio_segments: List of AudioSegment objects to save.
+        - filename: The name of the Pickle file to save the data.
+        """
+        with open(filename, 'wb') as file:
+            # Use pickle to dump the data into the file
+            pickle.dump(audio_segments, file)
 
+        print(f"Data saved to {filename}.")
+    
+    def load_segments_from_pickle(self,filename: str) -> List[AudioSegment]:
+        """
+        Load the AudioSegment objects from a Pickle file.
+        
+        Parameters:
+        - filename: The name of the Pickle file to load data from.
+        
+        Returns:
+        - A list of AudioSegment objects.
+        """
+        with open(filename, 'rb') as file:
+            # Use pickle to load the data from the file
+            audio_segments = pickle.load(file)
+
+        print(f"Data loaded from {filename}.")
+        return audio_segments
+    
     def create_dataclass_words(self) -> List[AudioSegment]:
         return self.word_segments
     
@@ -318,32 +353,30 @@ class AudioDataLoader:
 
 if __name__ == "__main__":
 
-    loader2 = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True)
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True, get_buffer=False)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= True, get_buffer=True)
     phones_segments = loader.create_dataclass_phones()
-    print(np.shape(phones_segments))
     words_segments = loader.create_dataclass_words()
-    print(np.shape(words_segments))
     sentences_segments = loader.create_dataclass_sentences()
-    print(np.shape(sentences_segments),type(sentences_segments))
-    phones_segments2 = loader2.create_dataclass_phones()
+    loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
+    loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
+    # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_segments.pkl")
+    # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     print(np.shape(phones_segments))
-    words_segments2 = loader2.create_dataclass_words()
     print(np.shape(words_segments))
-    sentences_segments2 = loader2.create_dataclass_sentences()
     print(np.shape(sentences_segments),type(sentences_segments))
+    
     print("PHONES::::::::::::::::::::::::::::::")
     for i in range(5):
-        print((phones_segments[i].end_time-phones_segments[i].start_time)/phones_segments[i].sample_rate,phones_segments[i].label_path,
-              (phones_segments2[i].end_time-phones_segments2[i].start_time)/phones_segments2[i].sample_rate,phones_segments2[i].label_path)
+        print((phones_segments[i].end_time-phones_segments[i].start_time)/phones_segments[i].sample_rate,phones_segments[i].label_path)
         
     print("WORDS:::::::::::::::::::::::::::::::")
     for i in range(5):
-        print((words_segments[i].end_time-words_segments[i].start_time)/words_segments[i].sample_rate,words_segments[i].label_path,
-              (words_segments2[i].end_time-words_segments2[i].start_time)/words_segments2[i].sample_rate,words_segments2[i].label_path)
+        print((words_segments[i].end_time-words_segments[i].start_time)/words_segments[i].sample_rate,words_segments[i].label_path)
         
     print("SENTENCES:::::::::::::::::::::::::::")
     for i in range(5):
-        print((sentences_segments[i].end_time-sentences_segments[i].start_time)/sentences_segments[i].sample_rate,sentences_segments[i].label_path,
-              (sentences_segments2[i].end_time-sentences_segments2[i].start_time)/sentences_segments2[i].sample_rate,sentences_segments2[i].label_path)
-        
+        print((sentences_segments[i].end_time-sentences_segments[i].start_time)/sentences_segments[i].sample_rate,sentences_segments[i].label_path)
+
+    
