@@ -7,9 +7,14 @@ import train_gmm
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 import numpy as np
 from sklearn.svm import SVC
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, roc_curve
 import pandas as pd
+
+
+ubm = None
 # Apply Hamming window and frame the signal
 def frame_signal(signal, frame_size, hop_size):
     frames = librosa.util.frame(signal, frame_length=frame_size, hop_length=hop_size, axis=0)
@@ -134,7 +139,7 @@ def plot_frequencies(spectral_envelopes):#, spectral_envelopes1):
     plt.show()
 
 
-def pad_mfccs(mfccs):
+def pad_mfccs(mfccs_train,mfccs_test):
     """
     Pad MFCC sequences to the same length as the longest MFCC sequence.
     
@@ -145,9 +150,10 @@ def pad_mfccs(mfccs):
     Returns:
     - padded_mfccs: List of padded MFCC sequences with shape (max_length, n_features).
     """
-    max_length = max([mfcc.shape[0] for mfcc in mfccs])
-    padded_mfccs = []
-    for mfcc in mfccs:
+    max_length = max(max([mfcc.shape[0] for mfcc in mfccs_train]),max([mfcc.shape[0] for mfcc in mfccs_test])) #maximum of all mfccs
+
+    padded_mfccs_train = []
+    for mfcc in mfccs_train:
         n_frames, n_features = mfcc.shape
         if n_frames < max_length:
             # Pad with zeros if the sequence is shorter than the max length
@@ -156,12 +162,24 @@ def pad_mfccs(mfccs):
         else:
             # No truncation needed since we want to match the longest MFCC
             padded_mfcc = mfcc
-        padded_mfccs.append(padded_mfcc.flatten())
-    return padded_mfccs
+        padded_mfccs_train.append(padded_mfcc.flatten())
+    padded_mfccs_test = []
+    for mfcc in mfccs_test:
+        n_frames, n_features = mfcc.shape
+        if n_frames < max_length:
+            # Pad with zeros if the sequence is shorter than the max length
+            padding = np.zeros((max_length - n_frames, n_features))
+            padded_mfcc = np.vstack((mfcc, padding))
+        else:
+            # No truncation needed since we want to match the longest MFCC
+            padded_mfcc = mfcc
+        padded_mfccs_test.append(padded_mfcc.flatten())
+    return padded_mfccs_train,padded_mfccs_test
 
 
-def get_features(dataclass, energy_bool = False):
-    mfcc_list = []
+def get_features(dataclass, energy_bool = False,training=False):
+    global ubm
+    mfcc_list = [] #here are all mfccs stored after building it with shape((n_components, n_features))
     for segment in dataclass:
         signal = segment.audio_data
         sample_rate = segment.sample_rate
@@ -170,12 +188,15 @@ def get_features(dataclass, energy_bool = False):
         mfcc = train_gmm.compute_mfcc_features(signal, sample_rate)
         #Transpose to get it like that: (n_components, n_features) for the covarianve_type: diag
         mfcc_list.append(np.transpose(mfcc))
-
-    # Concatenate all MFCC features into a single matrix So (n_frames,36 features)
-    mfcc_features = np.concatenate(mfcc_list, axis=0)
-    print("Training UBM...")
-    ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)
-    print("Training finished!")
+    
+    if(training):
+        # Concatenate all MFCC features into a single matrix So (n_frames,36 features) for ubm training
+        mfcc_features = np.concatenate(mfcc_list, axis=0)
+        # scaler = StandardScaler()
+        # mfcc_features = scaler.fit_transform(mfcc_features)
+        print("Training UBM...")
+        ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)#safed in a public variable so it can be used when test is called an no training on test data
+        print("Training finished!")
 
     # Step 2: Adapt the UBM for each word
     labels = []
@@ -184,9 +205,13 @@ def get_features(dataclass, energy_bool = False):
     simmplified_supervectors = []
     for n,segment in enumerate(dataclass):
         signal = segment.audio_data
-        mfcc = mfcc_list[n]
-
+        mfcc = mfcc_list[n] #has shape (n_components, 36)
+        # scaler = StandardScaler()
+        # mfcc = scaler.fit_transform(mfcc)
         #print("mfcc word adaption shape:", np.shape(mfcc))
+        if(ubm == None):
+            print("Error! First call Train to init UBM")
+            return None
         adapted_gmm = train_gmm.adapt_ubm_map(ubm, mfcc)
         
         # Step 3: Extract the supervector
@@ -207,12 +232,15 @@ def get_features(dataclass, energy_bool = False):
             # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
             energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
             energys.append(energy_features)
-    padded_mfccs = pad_mfccs(mfcc_list)
+    #pad to have same lenght.
+    #mfccs per word are also flattened
+
     if energy_bool:
             print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} Simplified Supervectors,{len(mfcc_list) } MFCCs and {len(energys)} Energy.")
-            return supervectors,simmplified_supervectors,padded_mfccs,energys, labels
+            return supervectors,simmplified_supervectors,mfcc_list,energys, labels
+    
     print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} simplified supervectors,{len(mfcc_list) } MFCCs.")
-    return supervectors,simmplified_supervectors,padded_mfccs, labels
+    return supervectors,simmplified_supervectors,mfcc_list, labels
 
 
 def compute_metrics(y_true, y_pred, y_pred_proba):
@@ -273,35 +301,73 @@ if __name__ == "__main__":
     # # mfcc_features will have the shape (36, num_frames), where 36 is the number of MFCC coefficients (12 static, 24 dynamic)
     # print(f'MFCC features shape: {mfcc_features.shape}')
 
+    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
+    print(np.shape(segments_train),np.shape(segments_test))
 
-    supervectors, simplified_supervectors, mfccs, energys, labels = get_features(words_segments,energy_bool=True)
+    supervectors_train, simplified_supervectors_train, mfccs_train, energys_train, labels_train = get_features(segments_train,energy_bool=True,training=True)#has to be called first to init ubm
+    supervectors_test, simplified_supervectors_test, mfccs_test, energys_test, labels_test = get_features(segments_test,energy_bool=True)
+    padded_mfccs_train,padded_mfccs_test = pad_mfccs(mfccs_train,mfccs_test)#shape(396,23904)
+
+    scaler = StandardScaler()
+    supervectors_train = scaler.fit_transform(supervectors_train)
+    supervectors_test = scaler.transform(supervectors_test)
+    #simplified_supervectors= scaler.fit_transform(simplified_supervectors)
+    #mfccs= scaler.fit_transform(mfccs)
+    
     label_encoder = LabelEncoder()
-    # Fit the encoder and transform the labels into numeric values
-    encoded_labels = label_encoder.fit_transform(labels)
+    encoded_labels_train = label_encoder.fit_transform(labels_train)
+    encoded_labels_test = label_encoder.transform(labels_test)
 
-    print(np.shape(supervectors),np.shape(simplified_supervectors),np.shape(mfccs),np.shape(energys),np.shape(labels))
-    X = energys
+    print(np.shape(supervectors_train),np.shape(simplified_supervectors_train),np.shape(padded_mfccs_train),np.shape(energys_train),np.shape(labels_train))
+    print(np.shape(supervectors_test),np.shape(simplified_supervectors_test),np.shape(padded_mfccs_test),np.shape(energys_test),np.shape(labels_test))
    
-    X = [supervectors, simplified_supervectors, mfccs, energys]
+    X = [supervectors_train, simplified_supervectors_train, padded_mfccs_train, energys_train, encoded_labels_train]
+    Y = [supervectors_test, simplified_supervectors_test, padded_mfccs_test, energys_test, encoded_labels_test]
     descriptions = ['Supervectors', 'SimplifiedSupervectors', 'MFCCs', 'Energy']
     m = []
-    for i in range(4):
-        #print("Shape of Train Tensor: ", np.shape(X[i]))
-        X_train, X_test, y_train, y_test = train_test_split(X[i], encoded_labels, test_size=0.2, random_state=42)
 
-        # Create and train the SVM with a polynomial kernel
-        svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
-        svm_classifier.fit(X_train, y_train)
-        y_pred = svm_classifier.predict(X_test)
-        #get predicted probabilities
-        svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
-        svm_prob.fit(X_train, y_train)
-        y_pred_proba = svm_prob.predict_proba(X_test)
+    # for i in range(4):
+    #     X_train = X[i]
+    #     X_test =Y[i]
+    #     y_train =X[4]
+    #     y_test  =Y[4]
+    #     # Create and train the SVM with a polynomial kernel
+    #     svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+    #     svm_classifier.fit(X_train, y_train)
+    #     y_pred = svm_classifier.predict(X_test)
+    #     #get predicted probabilities
+    #     svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
+    #     svm_prob.fit(X_train, y_train)
+    #     y_pred_proba = svm_prob.predict_proba(X_test)
+
+    #     # Compute the metrics
+    #     metrics = compute_metrics(y_test, y_pred, y_pred_proba)
+    #     print(metrics)
+    #     m.append(metrics)
+
+    for i in range(4):
+        # Split the data into training and testing sets
+        X_train = X[i]
+        X_test =Y[i]
+        y_train =X[4]
+        y_test  =Y[4]
+
+        # Create and train the AdaBoost classifier with DecisionTree as the base estimator
+        base_estimator = DecisionTreeClassifier(max_depth=1)
+        ada_classifier = AdaBoostClassifier(estimator=base_estimator, n_estimators=50, random_state=42)
+        ada_classifier.fit(X_train, y_train)
+        
+        # Predict the class labels
+        y_pred = ada_classifier.predict(X_test)
+        
+        # Get predicted probabilities for positive class
+        y_pred_proba = ada_classifier.predict_proba(X_test)
 
         # Compute the metrics
         metrics = compute_metrics(y_test, y_pred, y_pred_proba)
-        print(metrics)
+        print(f"Metrics for {descriptions[i]}: {metrics}")
         m.append(metrics)
+
 
     df_metrics = pd.DataFrame(m)
     df_metrics.insert(0, 'Description', descriptions)
