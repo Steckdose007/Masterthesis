@@ -38,8 +38,10 @@ import os
 import matplotlib.pyplot as plt
 import csv
 import pickle
-
-
+import numpy as np
+import pandas as pd
+from numba import jit
+import timeit
 
 @dataclass
 class AudioSegment:
@@ -99,6 +101,7 @@ class AudioDataLoader:
                     self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
         return file_pairs
 
+    #@jit(nopython=True)
     def rolling_std(self,signal, window_size):
         """
         Compute the rolling standard deviation over a given window size.
@@ -132,6 +135,17 @@ class AudioDataLoader:
         # Compute the rolling standard deviation
         rolling_std_dev = self.rolling_std(signal, window_size)
 
+        """Ploting"""
+        # # Plot the original signal and the rolling standard deviation
+        # plt.figure(figsize=(14, 6))
+        # plt.plot(signal, label='Original Signal', alpha=0.75)
+        # plt.plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std Dev', color='orange')
+        # plt.title('Original Signal and Rolling Standard Deviation')
+        # plt.xlabel('Sample Index')
+        # plt.ylabel('Amplitude')
+        # plt.legend()
+        # plt.grid()
+        # plt.show()
         # # Plot the rolling standard deviation and threshold
         # plt.plot(rolling_std_dev, label='Rolling Std Dev')
         # plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.01)')
@@ -140,10 +154,12 @@ class AudioDataLoader:
         # plt.ylabel('Standard Deviation')
         # plt.legend()
         # plt.show()
+
+        
         # Find the real start: from the beginning to where the std dev exceeds the threshold
         for i in range(len(rolling_std_dev)):
             if rolling_std_dev[i] > threshold:
-                adjusted_start = i
+                adjusted_start = i + window_size // 2  # Move to the middle of the window
                 break
         else:
             adjusted_start = 0  # Fallback to the very start if no threshold exceeded
@@ -151,7 +167,7 @@ class AudioDataLoader:
         # Find the real end: from the end to where the std dev exceeds the threshold (reverse search)
         for i in range(len(rolling_std_dev) - 1, -1, -1):
             if rolling_std_dev[i] > threshold:
-                adjusted_end = i + window_size  # Adjusted end time, accounting for the window size
+                adjusted_end =  i + window_size // 2  # Move to the middle of the window
                 break
         else:
             adjusted_end = len(signal)  # Fallback to the very end if no threshold exceeded
@@ -353,16 +369,29 @@ class AudioDataLoader:
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=False)
-    # phones_segments = loader.create_dataclass_phones()
-    # words_segments = loader.create_dataclass_words()
-    # sentences_segments = loader.create_dataclass_sentences()
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True)
+    # # Sample signal data
+    # np.random.seed(0)
+    # signal = np.random.randn(100000)  # Large array for performance testing
+    # window_size = 100
+    
+    # # Timing the Numba implementation
+    # numba_time = timeit.timeit(lambda: rolling_std_numba(signal, window_size), number=10)
+    # print(f"Numba implementation time: {numba_time / 10:.5f} seconds")
+    # # Timing the Pandas implementation
+    # pandas_time = timeit.timeit(lambda: loader.rolling_std(signal, window_size), number=10)
+    # print(f"Pandas implementation time: {pandas_time / 10:.5f} seconds")
+
+
+    phones_segments = loader.create_dataclass_phones()
+    words_segments = loader.create_dataclass_words()
+    sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words_segments.pkl")
-    sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
+    # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_segments.pkl")
+    # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     print(np.shape(phones_segments))
     print(np.shape(words_segments))
     print(np.shape(sentences_segments),type(sentences_segments))
