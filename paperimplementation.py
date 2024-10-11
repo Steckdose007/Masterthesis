@@ -12,7 +12,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, roc_curve
 import pandas as pd
-
+import seaborn as sns
 
 ubm = None
 # Apply Hamming window and frame the signal
@@ -177,7 +177,7 @@ def pad_mfccs(mfccs_train,mfccs_test):
     return padded_mfccs_train,padded_mfccs_test
 
 
-def get_features(dataclass, energy_bool = False,training=False):
+def get_features(dataclass, energy_bool = False,training=False,reg_covar=1e-6,relevance_factor=15):
     global ubm
     mfcc_list = [] #here are all mfccs stored after building it with shape((n_components, n_features))
     for segment in dataclass:
@@ -195,7 +195,7 @@ def get_features(dataclass, energy_bool = False,training=False):
         # scaler = StandardScaler()
         # mfcc_features = scaler.fit_transform(mfcc_features)
         print("Training UBM...")
-        ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6)#safed in a public variable so it can be used when test is called an no training on test data
+        ubm = train_gmm.train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=reg_covar)#safed in a public variable so it can be used when test is called an no training on test data
         print("Training finished!")
 
     # Step 2: Adapt the UBM for each word
@@ -212,7 +212,7 @@ def get_features(dataclass, energy_bool = False,training=False):
         if(ubm == None):
             print("Error! First call Train to init UBM")
             return None
-        adapted_gmm = train_gmm.adapt_ubm_map(ubm, mfcc)
+        adapted_gmm = train_gmm.adapt_ubm_map(ubm, mfcc, relevance_factor=relevance_factor)
         
         # Step 3: Extract the supervector
         supervector, simmplified_supervector = train_gmm.extract_supervector(adapted_gmm)
@@ -242,6 +242,85 @@ def get_features(dataclass, energy_bool = False,training=False):
     print(f"Extracted {len(supervectors)} supervectors, {len(simmplified_supervectors)} simplified supervectors,{len(mfcc_list) } MFCCs.")
     return supervectors,simmplified_supervectors,mfcc_list, labels
 
+def grid_search(dataclass, reg_covar_values, relevance_factor_values, energy_bool=False):
+    best_score = 0
+    best_params = {'reg_covar': None, 'relevance_factor': None}
+    all_results = []
+    global ubm
+
+    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
+    # Loop over all combinations of reg_covar and relevance_factor
+    for reg_covar in reg_covar_values:
+        for relevance_factor in relevance_factor_values:
+            print(f"Testing reg_covar={reg_covar}, relevance_factor={relevance_factor}")
+            
+
+            supervectors_train, simplified_supervectors_train, mfccs_train, energys_train, labels_train = get_features(segments_train,energy_bool=True,training=True,reg_covar=reg_covar,relevance_factor=relevance_factor)#has to be called first to init ubm
+            supervectors_test, simplified_supervectors_test, mfccs_test, energys_test, labels_test = get_features(segments_test,energy_bool=True,reg_covar=reg_covar,relevance_factor=relevance_factor)
+
+            scaler = StandardScaler()
+            supervectors_train = scaler.fit_transform(supervectors_train)
+            supervectors_test = scaler.transform(supervectors_test)
+            #simplified_supervectors= scaler.fit_transform(simplified_supervectors)
+            #mfccs= scaler.fit_transform(mfccs)
+            
+            label_encoder = LabelEncoder()
+            encoded_labels_train = label_encoder.fit_transform(labels_train)
+            encoded_labels_test = label_encoder.transform(labels_test)
+
+            X_train =supervectors_train
+            X_test =supervectors_test
+
+            # Create and train the SVM with a polynomial kernel
+            svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+            svm_classifier.fit(X_train, encoded_labels_train)
+            y_pred = svm_classifier.predict(X_test)
+            #get predicted probabilities
+            svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
+            svm_prob.fit(X_train, encoded_labels_train)
+            y_pred_proba = svm_prob.predict_proba(X_test)
+
+            # Compute the metrics
+            metrics = compute_metrics(encoded_labels_test, y_pred, y_pred_proba)
+            all_results.append((reg_covar, relevance_factor, metrics))
+            print(metrics)
+            # Update best parameters if current score is better
+            current_score = metrics['AUC']  # Use AUC as the metric to optimize
+            if current_score > best_score:
+                best_score = current_score
+                best_params = {'reg_covar': reg_covar, 'relevance_factor': relevance_factor}
+                print(f"New best score: {best_score} with reg_covar={reg_covar}, relevance_factor={relevance_factor}")
+            ubm = None
+    return best_params, best_score, all_results
+
+
+def display_results_table(all_results, metric_name='AUC'):
+    """
+    Displays the results from the grid search in a table format.
+    
+    Parameters:
+    - all_results: A list of tuples (reg_covar, relevance_factor, metrics_dict)
+    - metric_name: The name of the metric to display (default is 'AUC')
+    """
+    # Extract unique reg_covar and relevance_factor values
+    reg_covar_values = sorted(list(set([result[0] for result in all_results])))
+    relevance_factor_values = sorted(list(set([result[1] for result in all_results])))
+
+    # Create a DataFrame to hold the metric values
+    metric_df = pd.DataFrame(index=reg_covar_values, columns=relevance_factor_values)
+
+    # Fill the DataFrame with the corresponding metric values
+    for result in all_results:
+        reg_covar = result[0]
+        relevance_factor = result[1]
+        metric_value = result[2][metric_name]
+        metric_df.loc[reg_covar, relevance_factor] = round(metric_value, 2)
+
+    # Display the DataFrame as a formatted table
+    print(f"\nTable of {metric_name} for Different reg_covar and relevance_factor Combinations:\n")
+    print(metric_df)
+
+
 
 def compute_metrics(y_true, y_pred, y_pred_proba):
     
@@ -255,11 +334,11 @@ def compute_metrics(y_true, y_pred, y_pred_proba):
     # Area Under the Curve (AUC)
     AUC = roc_auc_score(y_true, y_pred_proba[:, 1])  # Use probabilities for positive class   
     return {
-        'RR': float(round(RR, 2)),
-        'Rn': float(round(Rn, 2)),
-        'Rp': float(round(Rp, 2)),
-        'CL': float(round(CL, 2)),
-        'AUC': float(round(AUC, 2))
+        'RR': float(round(RR, 3)),
+        'Rn': float(round(Rn, 3)),
+        'Rp': float(round(Rp, 3)),
+        'CL': float(round(CL, 3)),
+        'AUC': float(round(AUC, 3))
     }
 
 if __name__ == "__main__":
@@ -268,38 +347,20 @@ if __name__ == "__main__":
     phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
     words_segments = loader.load_segments_from_pickle("words_segments.pkl")
     sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    # phone = phone_segments[82]
-    # word1 = words_segments[36]
-    # word = sentence_segments[0]
-    # print(word)
-    # signal = word.audio_data
-    # sample_rate = word.sample_rate
 
-    # # Frame the signal and apply Hamming window
-    # frame_size = int(25.6e-3 * sample_rate)  # Frame size (25.6 ms)
-    # hop_size = int(10e-3 * sample_rate)      # Frame shift (10 ms)
-    # print(f"Sample Rate for word {word.label}: ",sample_rate)
-    # frames = frame_signal(signal, frame_size, hop_size)
-    # print(f"{word.label} frames: ", np.shape(frames)) #(43, 1128) i have 43 frames each with 1128 samples.(the number of time-domain samples in each frame)
-    # # Compute the spectral envelope for each frame
-    # n_fft=2048
-    # cepstral_order=60
-    # spectral_envelopes = compute_spectral_envelope(frames, sample_rate, n_fft, cepstral_order)
-    # print(f"{word.label} spectral_envelopes: ", np.shape(spectral_envelopes))#(43, 1024) for each of the 43 frames there are 1024 frequency-domain values.     
+    """get search for best hyperparam"""
+    # # Define the parameter search space
+    # reg_covar_values = [1e-6, 1e-5, 1e-4, 1e-3]
+    # relevance_factor_values = [10, 15, 20, 25, 30]
 
-    # #Some plotting
-    # #plot_spectrogram(signal, sample_rate, word.label)
-    # #plot_frequencies(spectral_envelopes)#,spectral_envelopes1)
-    # #plot_mel_spectrogram(word,phone)
+    # # Call the grid search function
+    # best_params, best_score, all_results = grid_search(words_segments, reg_covar_values, relevance_factor_values, energy_bool=True)
 
-    # # Compute energy in specific frequency bands (5-11 kHz and 11-20 kHz)
-    # energy_features = compute_energy_in_bands(spectral_envelopes, sample_rate)
-    # print(f"Energy in 5-11 kHz: {energy_features[0]}, Energy in 11-20 kHz: {energy_features[1]}")
+    # # Plot the results
+    # print(f"Best parameters: {best_params} with score: {best_score}")
+    # display_results_table(all_results, metric_name='AUC')
 
-    # # Compute 12 static MFCCs, 24 dynamic (delta and delta-delta) MFCCs, using 22 Mel filters
-    # mfcc_features = compute_mfcc_features(signal, sample_rate)
-    # # mfcc_features will have the shape (36, num_frames), where 36 is the number of MFCC coefficients (12 static, 24 dynamic)
-    # print(f'MFCC features shape: {mfcc_features.shape}')
+
 
     segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
     print(np.shape(segments_train),np.shape(segments_test))
@@ -325,48 +386,48 @@ if __name__ == "__main__":
     Y = [supervectors_test, simplified_supervectors_test, padded_mfccs_test, energys_test, encoded_labels_test]
     descriptions = ['Supervectors', 'SimplifiedSupervectors', 'MFCCs', 'Energy']
     m = []
-
-    # for i in range(4):
-    #     X_train = X[i]
-    #     X_test =Y[i]
-    #     y_train =X[4]
-    #     y_test  =Y[4]
-    #     # Create and train the SVM with a polynomial kernel
-    #     svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
-    #     svm_classifier.fit(X_train, y_train)
-    #     y_pred = svm_classifier.predict(X_test)
-    #     #get predicted probabilities
-    #     svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
-    #     svm_prob.fit(X_train, y_train)
-    #     y_pred_proba = svm_prob.predict_proba(X_test)
-
-    #     # Compute the metrics
-    #     metrics = compute_metrics(y_test, y_pred, y_pred_proba)
-    #     print(metrics)
-    #     m.append(metrics)
-
+    """SVM"""
     for i in range(4):
-        # Split the data into training and testing sets
         X_train = X[i]
         X_test =Y[i]
         y_train =X[4]
         y_test  =Y[4]
-
-        # Create and train the AdaBoost classifier with DecisionTree as the base estimator
-        base_estimator = DecisionTreeClassifier(max_depth=1)
-        ada_classifier = AdaBoostClassifier(estimator=base_estimator, n_estimators=50, random_state=42)
-        ada_classifier.fit(X_train, y_train)
-        
-        # Predict the class labels
-        y_pred = ada_classifier.predict(X_test)
-        
-        # Get predicted probabilities for positive class
-        y_pred_proba = ada_classifier.predict_proba(X_test)
+        # Create and train the SVM with a polynomial kernel
+        svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+        svm_classifier.fit(X_train, y_train)
+        y_pred = svm_classifier.predict(X_test)
+        #get predicted probabilities
+        svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
+        svm_prob.fit(X_train, y_train)
+        y_pred_proba = svm_prob.predict_proba(X_test)
 
         # Compute the metrics
         metrics = compute_metrics(y_test, y_pred, y_pred_proba)
-        print(f"Metrics for {descriptions[i]}: {metrics}")
+        print(metrics)
         m.append(metrics)
+    """ADABOOSTM1"""
+    # for i in range(4):
+    #     # Split the data into training and testing sets
+    #     X_train = X[i]
+    #     X_test =Y[i]
+    #     y_train =X[4]
+    #     y_test  =Y[4]
+
+    #     # Create and train the AdaBoost classifier with DecisionTree as the base estimator
+    #     base_estimator = DecisionTreeClassifier(max_depth=1)
+    #     ada_classifier = AdaBoostClassifier(estimator=base_estimator, n_estimators=50, random_state=42)
+    #     ada_classifier.fit(X_train, y_train)
+        
+    #     # Predict the class labels
+    #     y_pred = ada_classifier.predict(X_test)
+        
+    #     # Get predicted probabilities for positive class
+    #     y_pred_proba = ada_classifier.predict_proba(X_test)
+
+    #     # Compute the metrics
+    #     metrics = compute_metrics(y_test, y_pred, y_pred_proba)
+    #     print(f"Metrics for {descriptions[i]}: {metrics}")
+    #     m.append(metrics)
 
 
     df_metrics = pd.DataFrame(m)
@@ -374,4 +435,3 @@ if __name__ == "__main__":
     # Convert the DataFrame to LaTeX format
     latex_table = df_metrics.to_latex(index=False,float_format="{:.2f}".format)
     print(latex_table)
-

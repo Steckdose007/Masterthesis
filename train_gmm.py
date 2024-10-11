@@ -49,7 +49,7 @@ def train_ubm(mfcc_features, n_components=16, max_iter=100, reg_covar=1e-6):
         print(f"GMM did not converge. Reached the maximum of {max_iter} iterations.")
     return gmm
 
-def compute_posterior_probs(gmm, mfcc_features):
+def compute_posterior_probs(gmm, mfcc_features, relevance_factor=16):
     """
     Compute the posterior probabilities (responsibilities) for each Gaussian component 
     in the UBM for the given MFCC features.
