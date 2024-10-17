@@ -52,6 +52,21 @@ class AudioSegment:
     label: str  
     label_path: str
 
+@jit(nopython=True)
+def rolling_std(signal, window_size):
+    """
+    Compute the rolling standard deviation over a given window size.
+    
+    Parameters:
+    - signal: The audio signal (1D numpy array).
+    - window_size: The size of the window (in samples).
+    
+    Returns:
+    - rolling_std: Rolling standard deviation of the signal.
+    """
+    return np.array([np.std(signal[i:i+window_size]) for i in range(len(signal) - window_size)])
+
+
 class AudioDataLoader:
     def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False):
         self.phone_bool = phone_data
@@ -63,6 +78,7 @@ class AudioDataLoader:
         self.phones =["z","s","Z","S","ts"]
         self.folder_path = None
         self.dividing_word = None
+        self.maximum_word_length = 0
         self.label_path = None
         self.get_buffer = get_buffer
         self.buffer = 0.005 #5ms
@@ -101,19 +117,19 @@ class AudioDataLoader:
                     self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
         return file_pairs
 
-    #@jit(nopython=True)
-    def rolling_std(self,signal, window_size):
-        """
-        Compute the rolling standard deviation over a given window size.
+    # #@jit(nopython=True)
+    # def rolling_std(self,signal, window_size):
+    #     """
+    #     Compute the rolling standard deviation over a given window size.
         
-        Parameters:
-        - signal: The audio signal (1D numpy array).
-        - window_size: The size of the window (in samples).
+    #     Parameters:
+    #     - signal: The audio signal (1D numpy array).
+    #     - window_size: The size of the window (in samples).
         
-        Returns:
-        - rolling_std: Rolling standard deviation of the signal.
-        """
-        return np.array([np.std(signal[i:i+window_size]) for i in range(len(signal) - window_size)])
+    #     Returns:
+    #     - rolling_std: Rolling standard deviation of the signal.
+    #     """
+    #     return np.array([np.std(signal[i:i+window_size]) for i in range(len(signal) - window_size)])
 
     def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.01):
         """
@@ -133,7 +149,7 @@ class AudioDataLoader:
         window_size = int((window_size_ms / 1000) * sample_rate)
         
         # Compute the rolling standard deviation
-        rolling_std_dev = self.rolling_std(signal, window_size)
+        rolling_std_dev = rolling_std(signal, window_size)
 
         """Ploting"""
         # # Plot the original signal and the rolling standard deviation
@@ -172,6 +188,10 @@ class AudioDataLoader:
         else:
             adjusted_end = len(signal)  # Fallback to the very end if no threshold exceeded
         
+        if ((adjusted_end-adjusted_start)>self.maximum_word_length):
+            self.maximum_word_length = (adjusted_end-adjusted_start)
+            print("Maximum word length: ",self.maximum_word_length)
+
         return adjusted_start, adjusted_end
 
     def process_csv(self,wav_file,csv_file):
@@ -387,7 +407,7 @@ if __name__ == "__main__":
     words_segments = loader.create_dataclass_words()
     sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
     # words_segments = loader.load_segments_from_pickle("words_segments.pkl")
