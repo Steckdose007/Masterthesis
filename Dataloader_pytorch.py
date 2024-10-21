@@ -42,11 +42,14 @@ class AudioSegmentDataset(Dataset):
     def __getitem__(self, idx):
         segment = self.audio_segments[idx]
         audio_data = segment.audio_data
-        label = segment.label_path  # Assuming the label is an integer or encoded
+        label = 0
+        if(segment.label_path == "sigmatism"):
+            label = 1
+        
         padded_audio = self.pad_audio(audio_data, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
-        #In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
+        # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
         # However, CNNs expect the input to have a channel dimension, 
         # which is why we add this extra dimension.
         audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0)  
@@ -77,7 +80,7 @@ if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
-    #words_segments = loader.create_dataclass_words()
+    # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
     words_segments = loader.load_segments_from_pickle("words_segments.pkl")
     print(np.shape(words_segments))

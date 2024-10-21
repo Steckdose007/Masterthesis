@@ -188,7 +188,6 @@ def adapt_ubm_map(ubm, mfcc_features, relevance_factor=16):
     #adapted_gmm.precisions_cholesky_ = compute_precision_cholesky(adapted_covariances)
     return adapted_gmm
 
-
 def extract_supervector(gmm):
     """
     Extract the supervector from the adapted GMM by concatenating its parameters.
