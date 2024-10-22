@@ -12,12 +12,12 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm  # For the progress bar
 
 def train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=10,best_model_filename = None):
-    best_accuracy = 0.0  # To keep track of the best accuracy
+    best_loss = 1000000  # To keep track of the best accuracy
     train_losses = []
     test_losses = []
     
     for epoch in range(num_epochs):
-        model.train()
+        model.train(True)
         running_loss = 0.0
         correct = 0
         total = 0
@@ -46,7 +46,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
             running_loss += loss.item()
 
             # Update the progress bar with average loss
-            progress_bar.set_postfix({'Loss': running_loss / (total if total > 0 else 1), 'Accuracy': correct / total})
+            progress_bar.set_postfix({'Loss': running_loss / total , 'Accuracy': correct / total})
 
         # Calculate epoch loss and accuracy for training data
         epoch_loss = running_loss / len(train_loader)
@@ -59,11 +59,11 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
         test_losses.append(test_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}")
 
-        if test_acc > best_accuracy:
-            best_accuracy = test_acc
+        if test_loss < best_loss:
+            best_loss = test_loss
             #best_model_filename = os.path.join('models', best_model_filename)
             torch.save(model.state_dict(), os.path.join('models', best_model_filename))
-            print(f"Best model saved with test accuracy {best_accuracy:.4f} as {best_model_filename}")
+            print(f"Best model saved with test accuracy {best_loss:.4f} as {best_model_filename}")
     
     # Plot train and test losses
     plot_losses(train_losses, test_losses,best_model_filename)
@@ -108,7 +108,7 @@ def plot_losses(train_losses, test_losses,best_model_filename):
     plt.title("Train and Test Loss over Epochs")
     plt.legend()
     plt.grid(True)
-    plt.savefig('loss_plot'+best_model_filename+'.png')  # Save the plot as an image
+    plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
     plt.show()
 
 if __name__ == "__main__":
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
-    model = CNN1D(num_classes).to(device)  # Ensure num_classes matches your problem
+    model = CNN1D(num_classes,target_length).to(device)  # Ensure num_classes matches your problem
     criterion = nn.CrossEntropyLoss()  # CrossEntropyLoss for multi-class classification
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

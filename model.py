@@ -3,19 +3,19 @@ import torch
 import torch.nn as nn
 
 class CNN1D(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, input_size):
         super(CNN1D, self).__init__()
         
-        # 1D Convolutional Layers
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=2)
-        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=5, stride=1, padding=2)
+        # Convolutional Layers
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)
         
-        # Pooling Layer
+        # Max Pooling Layer
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-        
+
         # Fully Connected Layers
-        self.fc1 = nn.Linear(64 * 36499, 128)  # Adjust the dimension based on input length
+        self.fc1 = nn.Linear(128 * (input_size // 8), 128)  # Adjust input_size//8 based on pooling
         self.fc2 = nn.Linear(128, num_classes)
         
         # Dropout
