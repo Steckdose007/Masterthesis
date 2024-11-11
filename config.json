@@ -16,6 +16,7 @@
       ["Die", "Reisen"]
     ],
     "dividing_word": "Xylophon",
-    "folder_path":["Data/normal","Data/sigmatism"]
+    "folder_path":["Data/normal","Data/sigmatism"],
+    "maximum_word_length": 291694
   }
   
