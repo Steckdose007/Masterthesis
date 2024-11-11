@@ -409,6 +409,17 @@ def get_box_length(words_segments):
     # Calculate word lengths for each word and group them by file path
     for word_segment in words_segments:
         word_length = (word_segment.end_time - word_segment.start_time) / word_segment.sample_rate
+        if word_length > 1.5:
+            # Plot the original signal and the rolling standard deviation
+            plt.figure(figsize=(14, 6))
+            plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
+            plt.title('Original Signal '+word_segment.label)
+            plt.xlabel('Time')
+            plt.ylabel('Amplitude')
+            plt.legend()
+            plt.grid()
+            plt.show()
+            
         if word_segment.label_path not in word_lengths_by_file:
             word_lengths_by_file[word_segment.label_path] = []
         word_lengths_by_file[word_segment.label_path].append(word_length)
@@ -427,7 +438,7 @@ def get_box_length(words_segments):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -441,14 +452,14 @@ if __name__ == "__main__":
     # print(f"Pandas implementation time: {pandas_time / 10:.5f} seconds")
 
 
-    # phones_segments = loader.create_dataclass_phones()
-    words_segments = loader.create_dataclass_words()
-    # sentences_segments = loader.create_dataclass_sentences()
+    #phones_segments = loader.create_dataclass_phones()
+    #words_segments = loader.create_dataclass_words()
+    #sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    #loader.save_segments_to_pickle(words_segments, "all_words_segments.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    # words_segments = loader.load_segments_from_pickle("words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     #print(np.shape(phones_segments))
     get_box_length(words_segments)
