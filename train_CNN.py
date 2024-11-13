@@ -4,10 +4,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from model import CNN1D  # Ensure this points to your CNN model definition
 from audiodataloader import AudioDataLoader, AudioSegment
-from dataloader_pytorch import AudioSegmentDataset  # Adjust based on actual file path
+from Dataloader_pytorch import AudioSegmentDataset  # Adjust based on actual file path
 from sklearn.model_selection import train_test_split
 import datetime
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  # For the progress bar
 
@@ -17,7 +18,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
     test_losses = []
     
     for epoch in range(num_epochs):
-        model.train(True)
+        model.train()
         running_loss = 0.0
         correct = 0
         total = 0
@@ -116,21 +117,24 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
 
     # Set target length for padding/truncation
-    target_length = 291994  
-
+    target_length = int(1.2*65108) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
+    print(target_length)
     # Create dataset
-    audio_dataset = AudioSegmentDataset(words_segments, target_length)
-    segments_train, segments_test = train_test_split(audio_dataset, random_state=42,test_size=0.20)
+    
+    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
+    segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
+    segments_train = AudioSegmentDataset(segments_train, target_length,augment = True)
+
     train_loader = DataLoader(segments_train, batch_size=16, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=16, shuffle=False)
 
     # Hyperparameters
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
     learning_rate = 0.001
-    num_epochs = 2
+    num_epochs = 15
 
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -138,6 +142,7 @@ if __name__ == "__main__":
     model = CNN1D(num_classes,target_length).to(device)  # Ensure num_classes matches your problem
     criterion = nn.CrossEntropyLoss()  # CrossEntropyLoss for multi-class classification
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     best_model_filename = f"best_cnn1d_model_{timestamp}.pth"
     

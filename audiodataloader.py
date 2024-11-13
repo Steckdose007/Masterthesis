@@ -53,6 +53,7 @@ class AudioSegment:
     sample_rate: int
     label: str  
     label_path: str
+    path: str
 
 @jit(nopython=True)
 def rolling_std(signal, window_size):
@@ -184,7 +185,6 @@ class AudioDataLoader:
         return adjusted_start, adjusted_end
 
     def process_csv(self,wav_file,csv_file):
-        
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
         # Normalize the audio to the range [-1, 1]
@@ -243,7 +243,8 @@ class AudioDataLoader:
                                     audio_data=segment, 
                                     sample_rate= sample_rate, 
                                     label=row[3],
-                                    label_path=self.label_path)
+                                    label_path=self.label_path,
+                                    path = wav_file)
                     )
                     
                 # Pause handling: Pauses should be included in sentences, not treated as a break
@@ -263,13 +264,15 @@ class AudioDataLoader:
                                     adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
                                     adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
                                     ###till here
+                                    #if(((adjusted_end-adjusted_start)/sample_rate)<= 1.2):#only words smaller than 1.2 seconds
                                     self.word_segments.append(
                                         AudioSegment(start_time=int(word_start+adjusted_start), 
                                                     end_time=int(word_start+adjusted_end), 
                                                     audio_data=adjusted_segment, 
                                                     sample_rate=sample_rate, 
                                                     label=word_label,
-                                                    label_path=self.label_path)
+                                                    label_path=self.label_path,
+                                                    path = wav_file)
                                     )
                                 # Check if we are past the word "Xylophone"
                                 if word_label == self.dividing_word:
@@ -289,7 +292,8 @@ class AudioDataLoader:
                                                 audio_data=segment, 
                                                 sample_rate=sample_rate, 
                                                 label=sentence_label,
-                                                label_path=self.label_path)
+                                                label_path=self.label_path,
+                                                path = wav_file)
                                 )
                             remaining_sentences.remove(current_sentence)  # Remove the processed sentence
                             current_sentence = None  
@@ -327,7 +331,8 @@ class AudioDataLoader:
                                         audio_data=segment, 
                                         sample_rate=sample_rate, 
                                         label=sentence_label,
-                                        label_path=self.label_path)
+                                        label_path=self.label_path,
+                                        path = wav_file)
                         )
                 elif not dividing_word:
                     if self.word_bool:
@@ -344,7 +349,8 @@ class AudioDataLoader:
                                         audio_data=adjusted_segment, 
                                         sample_rate=sample_rate, 
                                         label=word_label,
-                                        label_path=self.label_path)
+                                        label_path=self.label_path,
+                                        path = wav_file)
                         )
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
@@ -394,7 +400,7 @@ class AudioDataLoader:
 
 def get_box_length(words_segments):
     label_count = {}
-
+    global sum_length
     for word_segment in words_segments:
         label = word_segment.label_path
         if label not in label_count:
@@ -408,12 +414,14 @@ def get_box_length(words_segments):
 
     # Calculate word lengths for each word and group them by file path
     for word_segment in words_segments:
+        sum_length += (word_segment.end_time - word_segment.start_time)
         word_length = (word_segment.end_time - word_segment.start_time) / word_segment.sample_rate
-        if word_length > 1.5:
+        if word_length > 1.2:
             # Plot the original signal and the rolling standard deviation
+            leng = str(int(word_segment.end_time - word_segment.start_time))
             plt.figure(figsize=(14, 6))
             plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
-            plt.title('Original Signal '+word_segment.label)
+            plt.title(str(word_length) + "    " + word_segment.label + "  "+ word_segment.path + leng)
             plt.xlabel('Time')
             plt.ylabel('Amplitude')
             plt.legend()
@@ -436,6 +444,8 @@ def get_box_length(words_segments):
     # Show the boxplot
     plt.show()
 
+
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
@@ -453,18 +463,20 @@ if __name__ == "__main__":
 
 
     #phones_segments = loader.create_dataclass_phones()
-    #words_segments = loader.create_dataclass_words()
+    words_segments = loader.create_dataclass_words()
     #sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    #loader.save_segments_to_pickle(words_segments, "all_words_segments.pkl")
+    # loader.save_segments_to_pickle(words_segments, "all_words_segments.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
     words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     #print(np.shape(phones_segments))
-    get_box_length(words_segments)
-    print(np.shape(words_segments))
     print("Avg Length: ",sum_length/np.shape(words_segments)[0])
+    get_box_length(words_segments)
+    print("Avg Length: ",sum_length/np.shape(words_segments)[0])
+    print(np.shape(words_segments))
     #print(np.shape(sentences_segments),type(sentences_segments))
     
     print("WORDS:::::::::::::::::::::::::::::::")

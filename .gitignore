@@ -10,7 +10,8 @@
 
 # Built Visual Studio Code Extensions
 *.vsix
-
+/all_words_segments.pkl
+all_words_segments.pkl
 /Tonaufnahmen
 C:\Users\ul64ujis\Documents\Masterthesis\Tonaufnahmen
 Tonaufnahmen
