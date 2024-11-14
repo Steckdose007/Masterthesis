@@ -99,10 +99,7 @@ class AudioSegmentDataset(Dataset):
         augmentation = random.choice(augmentations)
         return augmentation(audio_data, sample_rate)
 
-    def add_gaussian_noise(self, audio_data, sample_rate, noise_level=0.005):
-        """
-        Add Gaussian noise to the audio.
-        """
+    def add_gaussian_noise(self,audio_data, noise_level=0.02):
         noise = np.random.normal(0, noise_level, audio_data.shape)
         return audio_data + noise
 
@@ -111,8 +108,11 @@ class AudioSegmentDataset(Dataset):
         Stretch or compress the time of the audio without changing the pitch.
         """
         if stretch_factor is None:
-            stretch_factor = random.uniform(0.8, 1.2)  # Random stretch between 80% and 120%
-        return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
+            stretch_factor = random.uniform(0.8, 1.2)
+              # Random stretch between 80% and 120%
+        if audio_data.size > 2048:
+            return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
+        return self.add_gaussian_noise(audio_data, noise_level=0.02)
 
     def pitch_shift(self, audio_data, sample_rate, n_steps=None):
         """
@@ -120,7 +120,9 @@ class AudioSegmentDataset(Dataset):
         """
         if n_steps is None:
             n_steps = random.randint(-2, 2)  # Shift pitch by up to 2 semitones
-        return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
+        if audio_data.size > 2048:
+            return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
+        return self.add_gaussian_noise(audio_data, noise_level=0.02)
 
     def random_crop_pad(self, audio_data, sample_rate):
         """
@@ -141,7 +143,7 @@ def visualize_augmentations(audio_data, sample_rate):
     - sample_rate: The sample rate of the audio signal.
     """
     # Define augmentations
-    def add_gaussian_noise(audio_data, noise_level=0.005):
+    def add_gaussian_noise(audio_data, noise_level=0.02):
         noise = np.random.normal(0, noise_level, audio_data.shape)
         return audio_data + noise
 
@@ -186,18 +188,57 @@ def visualize_augmentations(audio_data, sample_rate):
     plt.tight_layout()
     plt.show()
 
+def compute_average_spectrum_from_dataset(dataset, target_sample_rate=44100):
+
+    spectrums = []
+    i=0
+    for audio_tensor, _ in dataset:
+        # Remove the channel dimension and convert to numpy
+        audio = audio_tensor.squeeze(0).numpy()
+
+        # Compute the FFT
+        fft = np.fft.fft(audio)
+        fft_magnitude = np.abs(fft)  # Magnitude of FFT
+        
+        # Frequency bins
+        sample_rate = target_sample_rate  # Ensure sample rate is consistent
+        frequencies = np.fft.fftfreq(len(fft), 1 / sample_rate)
+        
+        # Only take the positive frequencies
+        half_spectrum = len(fft_magnitude) // 2
+        fft_magnitude = fft_magnitude[:half_spectrum]
+        
+        spectrums.append(fft_magnitude)
+        i +=1
+        if(i>1000):
+            break
+    # Stack and compute the average spectrum
+    spectrums = np.array(spectrums)
+    average_spectrum = np.mean(spectrums, axis=0)
+    frequencies = frequencies[:half_spectrum]
+    plt.figure(figsize=(10, 6))
+    plt.plot(frequencies, average_spectrum, color='blue', label="Average Spectrum")
+    plt.title("Average Frequency Spectrum")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Magnitude")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
     # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
-    visualize_augmentations(words_segments[0].audio_data, words_segments[0].sample_rate)
-    print(np.shape(words_segments))
-    target_length = 291994  
-    audio_dataset = AudioSegmentDataset(words_segments, target_length)
+    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
+    visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
+    #print(np.shape(words_segments))
+    # target_length = int(1.2*11811)    
+    # audio_dataset = AudioSegmentDataset(words_segments, target_length)
+    # compute_average_spectrum_from_dataset(audio_dataset)
 
-    # Create DataLoader
-    train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True)
+    # # Create DataLoader
+    # train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True)
     

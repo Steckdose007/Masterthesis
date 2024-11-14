@@ -71,14 +71,17 @@ def rolling_std(signal, window_size):
 
 
 class AudioDataLoader:
-    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False):
+    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
         self.phone_bool = phone_data
         self.word_bool = word_data
         self.sentence_bool = sentence_data
         self.word_segments = []
+        self.target_sr = 16000
+        self.org_sample_rate = 44100
         self.sentence_segments = []
         self.phone_segments = []
         self.phones =["z","s","Z","S","ts"]
+        self.downsample = downsample
         self.folder_path = None
         self.dividing_word = None
         self.maximum_word_length = 0
@@ -88,7 +91,6 @@ class AudioDataLoader:
         self.buffer_word = 0.065#window to search for word
         self.load_config(config_file)
         self.files = self.get_audio_csv_file_pairs()
-
 
     def load_config(self, config_file: str):
             """Load sentences and dividing word from the JSON config file."""
@@ -106,19 +108,20 @@ class AudioDataLoader:
         Returns:
         - A list of tuples, each containing a pair of .wav and .csv file paths.
         """
-        for path in self.folder_path:
-            self.label_path = os.path.basename(path)
-            wav_files = [f for f in os.listdir(path) if f.endswith('.wav')]
-            csv_files = [f for f in os.listdir(path) if f.endswith('.csv')]
+        if not (self.phone_bool == False and self.word_bool == False and self.sentence_bool == False):
+            for path in self.folder_path:
+                self.label_path = os.path.basename(path)
+                wav_files = [f for f in os.listdir(path) if f.endswith('.wav')]
+                csv_files = [f for f in os.listdir(path) if f.endswith('.csv')]
 
-            # Find pairs based on the base name (without the extension)
-            file_pairs = []
-            for wav_file in wav_files:
-                base_name = os.path.splitext(wav_file)[0]
-                corresponding_csv = base_name + '.csv'
-                if corresponding_csv in csv_files:
-                    self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
-        return file_pairs
+                # Find pairs based on the base name (without the extension)
+                file_pairs = []
+                for wav_file in wav_files:
+                    base_name = os.path.splitext(wav_file)[0]
+                    corresponding_csv = base_name + '.csv'
+                    if corresponding_csv in csv_files:
+                        self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
+            return file_pairs
 
     def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.01, label=None):
         """
@@ -237,6 +240,8 @@ class AudioDataLoader:
                     if(start_time <0):
                         start_time = 0
                     segment = audio_data[int(start_time):int(end_time)]
+                    if(self.downsample):
+                        segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                     self.phone_segments.append(
                         AudioSegment(start_time=start_time, 
                                     end_time=end_time, 
@@ -264,7 +269,8 @@ class AudioDataLoader:
                                     adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
                                     adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
                                     ###till here
-                                    #if(((adjusted_end-adjusted_start)/sample_rate)<= 1.2):#only words smaller than 1.2 seconds
+                                    if(self.downsample):
+                                        adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                                     self.word_segments.append(
                                         AudioSegment(start_time=int(word_start+adjusted_start), 
                                                     end_time=int(word_start+adjusted_end), 
@@ -286,6 +292,8 @@ class AudioDataLoader:
                             # Append the sentence segment and reset
                             if self.sentence_bool:
                                 segment = audio_data[int(sentence_start):int(sentence_end)]
+                                if(self.downsample):
+                                        segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                                 self.sentence_segments.append(
                                     AudioSegment(start_time=sentence_start, 
                                                 end_time=sentence_end, 
@@ -325,6 +333,8 @@ class AudioDataLoader:
                 if dividing_word and current_sentence:
                     if self.sentence_bool:
                         segment = audio_data[int(sentence_start):int(sentence_end)]
+                        if(self.downsample):
+                            segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                         self.sentence_segments.append(
                             AudioSegment(start_time=sentence_start, 
                                         end_time=sentence_end, 
@@ -343,6 +353,8 @@ class AudioDataLoader:
                         adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,word_label)
                         adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
                         ###till here
+                        if(self.downsample):
+                            adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                         self.word_segments.append(
                             AudioSegment(start_time=int(word_start+adjusted_start), 
                                         end_time=int(word_start+adjusted_end), 
@@ -448,7 +460,7 @@ def get_box_length(words_segments):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -464,17 +476,24 @@ if __name__ == "__main__":
 
     #phones_segments = loader.create_dataclass_phones()
     words_segments = loader.create_dataclass_words()
-    #sentences_segments = loader.create_dataclass_sentences()
+    # sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    # loader.save_segments_to_pickle(words_segments, "all_words_segments.pkl")
+    loader.save_segments_to_pickle(words_segments, "all_words_downsampled_to_16kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    # words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     #print(np.shape(phones_segments))
-    print("Avg Length: ",sum_length/np.shape(words_segments)[0])
-    get_box_length(words_segments)
+    biggest_sample=0
+    # Calculate word lengths for each word and group them by file path
+    for word_segment in words_segments:
+        if(biggest_sample<word_segment.audio_data.size):
+            biggest_sample = word_segment.audio_data.size
+    print("biggest sample: ",biggest_sample)
+    print("Avg Length 1: ",sum_length/np.shape(words_segments)[0])
+    sum_length =0
+    #get_box_length(words_segments)
     print("Avg Length: ",sum_length/np.shape(words_segments)[0])
     print(np.shape(words_segments))
     #print(np.shape(sentences_segments),type(sentences_segments))

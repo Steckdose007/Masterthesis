@@ -12,6 +12,8 @@
 *.vsix
 /all_words_segments.pkl
 all_words_segments.pkl
+all_words_downsampled_to_8kHz.pkl
+all_words_downsampled_to_16kHz.pkl
 /Tonaufnahmen
 C:\Users\ul64ujis\Documents\Masterthesis\Tonaufnahmen
 Tonaufnahmen

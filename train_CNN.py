@@ -117,29 +117,31 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
 
     # Set target length for padding/truncation
-    target_length = int(1.2*65108) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
-    print(target_length)
-    # Create dataset
-    
-    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
-    segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, target_length,augment = True)
-
-    train_loader = DataLoader(segments_train, batch_size=16, shuffle=True)
-    test_loader = DataLoader(segments_test, batch_size=16, shuffle=False)
+    target_length = int(1.2*65178) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
+    target_length_8kHz = int(1.2*11811) 
+    target_length_16kHz = int(1.2*23622)  
 
     # Hyperparameters
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
     learning_rate = 0.001
     num_epochs = 15
+    batch_size = 32
+    # Create dataset 
+    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
+    segments_test = AudioSegmentDataset(segments_test, target_length_8kHz, augment= False)
+    segments_train = AudioSegmentDataset(segments_train, target_length_8kHz,augment = True)
+
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
+
 
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
-    model = CNN1D(num_classes,target_length).to(device)  # Ensure num_classes matches your problem
+    model = CNN1D(num_classes,target_length_8kHz).to(device)  # Ensure num_classes matches your problem
     criterion = nn.CrossEntropyLoss()  # CrossEntropyLoss for multi-class classification
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
