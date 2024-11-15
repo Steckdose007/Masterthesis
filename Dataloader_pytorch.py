@@ -26,7 +26,7 @@ class AudioSegment:
     path: str
 
 class AudioSegmentDataset(Dataset):
-    def __init__(self, audio_segments: List[AudioSegment], target_length, augment: bool = False):
+    def __init__(self, audio_segments: List[AudioSegment], target_length: int, augment: bool):
         """
         Custom dataset for audio segments, prepares them for use in the CNN model.
         
@@ -48,7 +48,7 @@ class AudioSegmentDataset(Dataset):
         if(segment.label_path == "sigmatism"):
             label = 1
         # Apply augmentation to a subset of samples (e.g., 50% chance)
-        if self.augment and random.random() < 0.8:  # 80% chance of augmentation
+        if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = self.apply_augmentation(audio_data, segment.sample_rate)
         padded_audio = self.pad_audio(audio_data, self.target_length)
         
@@ -99,30 +99,30 @@ class AudioSegmentDataset(Dataset):
         augmentation = random.choice(augmentations)
         return augmentation(audio_data, sample_rate)
 
-    def add_gaussian_noise(self,audio_data, noise_level=0.02):
+    def add_gaussian_noise(self,audio_data,sample_rate, noise_level=0.005):
         noise = np.random.normal(0, noise_level, audio_data.shape)
         return audio_data + noise
 
-    def time_stretch(self, audio_data, sample_rate, stretch_factor=None):
+    def time_stretch(self, audio_data, sample_rate):
         """
         Stretch or compress the time of the audio without changing the pitch.
         """
-        if stretch_factor is None:
+        if audio_data.size >= 2048:
             stretch_factor = random.uniform(0.8, 1.2)
-              # Random stretch between 80% and 120%
-        if audio_data.size > 2048:
             return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
-        return self.add_gaussian_noise(audio_data, noise_level=0.02)
+        return audio_data
+        
 
-    def pitch_shift(self, audio_data, sample_rate, n_steps=None):
+    def pitch_shift(self, audio_data, sample_rate):
         """
         Shift the pitch of the audio up or down.
         """
-        if n_steps is None:
+        if audio_data.size >= 2048:
             n_steps = random.randint(-2, 2)  # Shift pitch by up to 2 semitones
-        if audio_data.size > 2048:
             return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
-        return self.add_gaussian_noise(audio_data, noise_level=0.02)
+        return audio_data
+       
+        
 
     def random_crop_pad(self, audio_data, sample_rate):
         """
@@ -225,6 +225,30 @@ def compute_average_spectrum_from_dataset(dataset, target_sample_rate=44100):
     plt.legend()
     plt.show()
 
+def plot_frequ_and_acc():
+    sampling_rates = [8000, 16000, 24000, 32000, 44100]
+    accuracies = [0.586, 0.586, 0.593, 0.587, 0.570]  # Replace with your actual accuracies
+    # Create a bar plot
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar([str(rate) + " Hz" for rate in sampling_rates], accuracies, color='skyblue', edgecolor='black')
+
+    # Add accuracy values inside the bars
+    for bar, accuracy in zip(bars, accuracies):
+        plt.text(bar.get_x() + bar.get_width() / 2, 
+                bar.get_height() - 0.05,  # Slightly below the top of the bar
+                f"{accuracy:.3f}", 
+                ha='center', va='bottom', fontsize=12, color='black', weight='bold')
+
+    # Add labels and title
+    plt.title("Sampling Frequency vs. Accuracy", fontsize=16)
+    plt.xlabel("Sampling Frequency (Hz)", fontsize=14)
+    plt.ylabel("Accuracy", fontsize=14)
+    plt.ylim(0, 1)  # Adjust depending on your accuracy range
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
 
@@ -232,7 +256,7 @@ if __name__ == "__main__":
     
     # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
     visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
     #print(np.shape(words_segments))
     # target_length = int(1.2*11811)    
@@ -241,4 +265,5 @@ if __name__ == "__main__":
 
     # # Create DataLoader
     # train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True)
+    
     

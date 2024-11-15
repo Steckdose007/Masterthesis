@@ -76,7 +76,7 @@ class AudioDataLoader:
         self.word_bool = word_data
         self.sentence_bool = sentence_data
         self.word_segments = []
-        self.target_sr = 16000
+        self.target_sr = 32000
         self.org_sample_rate = 44100
         self.sentence_segments = []
         self.phone_segments = []
@@ -460,7 +460,7 @@ def get_box_length(words_segments):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -478,7 +478,7 @@ if __name__ == "__main__":
     words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    loader.save_segments_to_pickle(words_segments, "all_words_downsampled_to_16kHz.pkl")
+    loader.save_segments_to_pickle(words_segments, "all_words_downsampled_to_32kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
     # words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")

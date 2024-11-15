@@ -14,6 +14,9 @@
 all_words_segments.pkl
 all_words_downsampled_to_8kHz.pkl
 all_words_downsampled_to_16kHz.pkl
+all_words_downsampled_to_24kHz.pkl
+all_words_downsampled_to_32kHz.pkl
+
 /Tonaufnahmen
 C:\Users\ul64ujis\Documents\Masterthesis\Tonaufnahmen
 Tonaufnahmen

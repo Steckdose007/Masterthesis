@@ -1,21 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
-from model import CNN1D  # Ensure this points to your CNN model definition
+from torch.utils.data import DataLoader
+from model import CNN1D 
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset  # Adjust based on actual file path
+from Dataloader_pytorch import AudioSegmentDataset  
 from sklearn.model_selection import train_test_split
 import datetime
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm  # For the progress bar
+from tqdm import tqdm  
 
 def train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
     train_losses = []
     test_losses = []
+    best_test_acc = 0
     
     for epoch in range(num_epochs):
         model.train()
@@ -57,6 +58,8 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
 
         # Evaluate on the test set
         test_loss, test_acc = evaluate_model(model, test_loader, criterion)
+        if test_acc > best_test_acc:
+            best_test_acc = test_acc
         test_losses.append(test_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}")
 
@@ -67,7 +70,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
             print(f"Best model saved with test accuracy {best_loss:.4f} as {best_model_filename}")
     
     # Plot train and test losses
-    plot_losses(train_losses, test_losses,best_model_filename)
+    plot_losses(train_losses, test_losses,best_model_filename,best_test_acc)
 
 def evaluate_model(model, test_loader, criterion):
     model.eval()
@@ -100,13 +103,13 @@ def evaluate_model(model, test_loader, criterion):
 
     return average_loss, accuracy
 # Function to plot training and test loss
-def plot_losses(train_losses, test_losses,best_model_filename):
+def plot_losses(train_losses, test_losses,best_model_filename,best_test_acc):
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label="Train Loss")
     plt.plot(test_losses, label="Test Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Train and Test Loss over Epochs")
+    plt.title("Train and Test Loss over Epochs with Acc of: "+str(best_test_acc))
     plt.legend()
     plt.grid(True)
     plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
@@ -117,12 +120,18 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    segments_train, segments_test = train_test_split(words_segments, random_state=42, test_size=0.20)
 
     # Set target length for padding/truncation
-    target_length = int(1.2*65178) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
+    # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
     target_length_8kHz = int(1.2*11811) 
     target_length_16kHz = int(1.2*23622)  
+    target_length_24kHz = int(1.2*35433)  
+    target_length_32kHz = int(1.2*47244)  
+    target_length_44kHz = int(1.2*65108) 
+    target_length = target_length_44kHz
+
 
     # Hyperparameters
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
@@ -130,9 +139,8 @@ if __name__ == "__main__":
     num_epochs = 15
     batch_size = 32
     # Create dataset 
-    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
-    segments_test = AudioSegmentDataset(segments_test, target_length_8kHz, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, target_length_8kHz,augment = True)
+    segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
+    segments_train = AudioSegmentDataset(segments_train, target_length, augment = True)
 
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
@@ -141,8 +149,8 @@ if __name__ == "__main__":
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
-    model = CNN1D(num_classes,target_length_8kHz).to(device)  # Ensure num_classes matches your problem
-    criterion = nn.CrossEntropyLoss()  # CrossEntropyLoss for multi-class classification
+    model = CNN1D(num_classes,target_length).to(device)  
+    criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
