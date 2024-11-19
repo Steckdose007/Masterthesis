@@ -41,8 +41,8 @@ import pickle
 import numpy as np
 import pandas as pd
 from numba import jit
-import timeit
-
+import timeit 
+from data_augmentation import apply_augmentation
 sum_length =0
 
 @dataclass
@@ -71,12 +71,12 @@ def rolling_std(signal, window_size):
 
 
 class AudioDataLoader:
-    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
+    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False, compute_MFCC: bool = False):
         self.phone_bool = phone_data
         self.word_bool = word_data
         self.sentence_bool = sentence_data
         self.word_segments = []
-        self.target_sr = 32000
+        self.target_sr = 24000
         self.org_sample_rate = 44100
         self.sentence_segments = []
         self.phone_segments = []
@@ -86,6 +86,7 @@ class AudioDataLoader:
         self.dividing_word = None
         self.maximum_word_length = 0
         self.label_path = None
+        self.compute_MFCC = compute_MFCC
         self.get_buffer = get_buffer
         self.buffer = 0.005 #5ms
         self.buffer_word = 0.065#window to search for word
@@ -271,11 +272,28 @@ class AudioDataLoader:
                                     ###till here
                                     if(self.downsample):
                                         adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                                    if(self.compute_MFCC and adjusted_segment.size > 2048):# because the DTF is using 2048 points
+                                        adjusted_mfcc = self.compute_mfcc_features(adjusted_segment,self.target_sr)
+                                        #add MFCC without augmentation 
+                                        self.word_segments.append(
+                                            AudioSegment(start_time=int(word_start+adjusted_start), 
+                                                        end_time=int(word_start+adjusted_end), 
+                                                        audio_data=adjusted_mfcc, 
+                                                        sample_rate=self.target_sr, 
+                                                        label=word_label,
+                                                        label_path=self.label_path,
+                                                        path = wav_file)
+                                        )
+
+                                    if(self.compute_MFCC and adjusted_segment.size > 2048):
+                                        #add MFCC with augmentation
+                                        adjusted_segment = apply_augmentation(adjusted_segment,self.target_sr)
+                                        adjusted_segment=self.compute_mfcc_features(adjusted_segment,self.target_sr)
                                     self.word_segments.append(
                                         AudioSegment(start_time=int(word_start+adjusted_start), 
                                                     end_time=int(word_start+adjusted_end), 
                                                     audio_data=adjusted_segment, 
-                                                    sample_rate=sample_rate, 
+                                                    sample_rate=self.target_sr, 
                                                     label=word_label,
                                                     label_path=self.label_path,
                                                     path = wav_file)
@@ -335,12 +353,28 @@ class AudioDataLoader:
                         segment = audio_data[int(sentence_start):int(sentence_end)]
                         if(self.downsample):
                             segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                        self.sentence_segments.append(
-                            AudioSegment(start_time=sentence_start, 
-                                        end_time=sentence_end, 
-                                        audio_data=segment, 
-                                        sample_rate=sample_rate, 
-                                        label=sentence_label,
+                        if(self.compute_MFCC):
+                            adjusted_mfcc = self.compute_mfcc_features(adjusted_segment,self.target_sr)
+                            #add MFCC without augmentation 
+                            self.word_segments.append(
+                                AudioSegment(start_time=int(word_start+adjusted_start), 
+                                            end_time=int(word_start+adjusted_end), 
+                                            audio_data=adjusted_mfcc, 
+                                            sample_rate=self.target_sr, 
+                                            label=word_label,
+                                            label_path=self.label_path,
+                                            path = wav_file)
+                            )
+                        if(self.compute_MFCC):
+                            #add MFCC with augmentation
+                            adjusted_segment = apply_augmentation(adjusted_segment,self.target_sr)
+                            adjusted_segment=self.compute_mfcc_features(adjusted_segment,self.target_sr)
+                        self.word_segments.append(
+                            AudioSegment(start_time=int(word_start+adjusted_start), 
+                                        end_time=int(word_start+adjusted_end), 
+                                        audio_data=adjusted_segment, 
+                                        sample_rate=self.target_sr, 
+                                        label=word_label,
                                         label_path=self.label_path,
                                         path = wav_file)
                         )
@@ -367,7 +401,29 @@ class AudioDataLoader:
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
     
-    
+    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=25.6e-3, hop_size=10e-3, n_fft=2048):
+        try:
+            # Convert frame and hop size from seconds to samples
+            frame_length = int(frame_size * sample_rate)
+            hop_length = int(hop_size * sample_rate)
+            
+            # Compute the static MFCCs using librosa's mfcc function
+            mfccs = librosa.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc, 
+                                        n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
+            
+            # Compute the first-order difference (Delta MFCCs) using a 5-frame window
+            mfcc_delta = librosa.feature.delta(mfccs, width=5)
+            
+            # Compute the second-order difference (Delta-Delta MFCCs)
+            #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
+            
+            # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
+            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
+            #print(np.shape(mfcc_features))
+            return mfcc_features
+        except:
+            print("ERROR: ",np.shape(signal))
+
     def save_segments_to_pickle(self,audio_segments: List[AudioSegment], filename: str):
         """
         Save the list of AudioSegment objects into a Pickle file.
@@ -460,7 +516,7 @@ def get_box_length(words_segments):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True,compute_MFCC = True)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -478,13 +534,12 @@ if __name__ == "__main__":
     words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    loader.save_segments_to_pickle(words_segments, "all_words_downsampled_to_32kHz.pkl")
+    loader.save_segments_to_pickle(words_segments, "MFCC__24kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    # words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
+    #words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    #print(np.shape(phones_segments))
     biggest_sample=0
     # Calculate word lengths for each word and group them by file path
     for word_segment in words_segments:
@@ -495,7 +550,8 @@ if __name__ == "__main__":
     sum_length =0
     #get_box_length(words_segments)
     print("Avg Length: ",sum_length/np.shape(words_segments)[0])
-    print(np.shape(words_segments))
+    print("shape",np.shape(words_segments))
+    print(np.shape(words_segments[1].audio_data))
     #print(np.shape(sentences_segments),type(sentences_segments))
     
     print("WORDS:::::::::::::::::::::::::::::::")

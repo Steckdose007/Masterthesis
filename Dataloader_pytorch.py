@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from audiodataloader import AudioDataLoader, AudioSegment
 import random
-
+from data_augmentation import apply_augmentation
 @dataclass
 class AudioSegment:
     start_time: float
@@ -48,8 +48,8 @@ class AudioSegmentDataset(Dataset):
         if(segment.label_path == "sigmatism"):
             label = 1
         # Apply augmentation to a subset of samples (e.g., 50% chance)
-        if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
-            audio_data = self.apply_augmentation(audio_data, segment.sample_rate)
+        if self.augment and random.random() < 0.8:  # 80% chance of augmentation
+            audio_data = apply_augmentation(audio_data, segment.sample_rate)
         padded_audio = self.pad_audio(audio_data, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
@@ -79,61 +79,7 @@ class AudioSegmentDataset(Dataset):
             # Truncate if the audio is too long
             return audio_data[:target_length]
         
-    def apply_augmentation(self, audio_data, sample_rate):
-        """
-        Apply data augmentation to the audio signal.
-        
-        Parameters:
-        - audio_data: Numpy array of the audio signal.
-        - sample_rate: Sample rate of the audio signal.
-        
-        Returns:
-        - Augmented audio data.
-        """
-        augmentations = [
-            self.add_gaussian_noise,
-            self.time_stretch,
-            self.pitch_shift,
-            self.random_crop_pad
-        ]
-        augmentation = random.choice(augmentations)
-        return augmentation(audio_data, sample_rate)
-
-    def add_gaussian_noise(self,audio_data,sample_rate, noise_level=0.005):
-        noise = np.random.normal(0, noise_level, audio_data.shape)
-        return audio_data + noise
-
-    def time_stretch(self, audio_data, sample_rate):
-        """
-        Stretch or compress the time of the audio without changing the pitch.
-        """
-        if audio_data.size >= 2048:
-            stretch_factor = random.uniform(0.8, 1.2)
-            return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
-        return audio_data
-        
-
-    def pitch_shift(self, audio_data, sample_rate):
-        """
-        Shift the pitch of the audio up or down.
-        """
-        if audio_data.size >= 2048:
-            n_steps = random.randint(-2, 2)  # Shift pitch by up to 2 semitones
-            return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
-        return audio_data
-       
-        
-
-    def random_crop_pad(self, audio_data, sample_rate):
-        """
-        Randomly crop or pad the audio signal.
-        """
-        crop_start = random.randint(0, len(audio_data) // 10)  # Randomly crop up to 10% from the start
-        crop_end = random.randint(len(audio_data) - len(audio_data) // 10, len(audio_data))  # Random crop at the end
-        cropped_audio = audio_data[crop_start:crop_end]
-        return self.pad_audio(cropped_audio, self.target_length)
-
-
+    
 def visualize_augmentations(audio_data, sample_rate):
     """
     Visualize the effects of data augmentation on audio data.

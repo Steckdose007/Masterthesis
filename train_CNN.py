@@ -120,7 +120,7 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_24kHz.pkl")
     segments_train, segments_test = train_test_split(words_segments, random_state=42, test_size=0.20)
 
     # Set target length for padding/truncation
@@ -130,7 +130,8 @@ if __name__ == "__main__":
     target_length_24kHz = int(1.2*35433)  
     target_length_32kHz = int(1.2*47244)  
     target_length_44kHz = int(1.2*65108) 
-    target_length = target_length_44kHz
+    target_length_24kHz_MFCC = int(35433)#data augmentstion already done
+    target_length = target_length_24kHz
 
 
     # Hyperparameters
