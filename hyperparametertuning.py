@@ -2,11 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from model import CNN1D  # Ensure this points to your CNN model definition
+from model import CNNMFCC  
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset  # Adjust based on actual file path
+from Dataloader_pytorch import AudioSegmentDataset 
 import optuna
-from optuna.trial import TrialState
 from optuna.visualization import plot_param_importances,plot_param_importances
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -17,20 +16,17 @@ def prepare_dataset():
     global segments_train, segments_test
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
     # Set target length for padding/truncation
-    target_length = int(1.2*65108) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
+    target_length = int(148) 
     
     # Create dataset  
-    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
+    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.50)
     segments_train, segments_test = train_test_split(segments_test, random_state=42,test_size=0.20)#small subset
     segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
     segments_train = AudioSegmentDataset(segments_train, target_length,augment = True)
     return segments_train,segments_test
 
-   
-
-    return train_loader, test_loader
 # Define objective function for Optuna
 def objective(trial):
     global segments_train, segments_test
@@ -39,26 +35,26 @@ def objective(trial):
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)  # Use log=True for logarithmic scale
     dropout_rate = trial.suggest_float('dropout_rate', 0.2, 0.5)
     batch_size = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
-
+    kernel_size = trial.suggest_categorical('kernel_size', [(3, 3), (5,5), (11,11), (15,15)])
+    gamma = trial.suggest_float("gamma", 0.5, 0.99)
+    step_size = trial.suggest_int("step_size", 5, 50)
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
    
-    target_length = int(1.2*65108) # maximum word lenght is 65108 and because a strechtching of up to 129% can appear the buffer hast to be that big. 
-    
+    target_length = int(148) 
     # Define model
-    model = CNN1D(num_classes=2, input_size=target_length)
-    model.dropout = nn.Dropout(dropout_rate)  # Update dropout rate
+    model = CNNMFCC(num_classes=2,n_mfcc = 24 , target_frames=target_length,kernel_size=kernel_size, dropout_rate=dropout_rate)
     model.to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     # Training loop
-    num_epochs = 10
+    num_epochs = 15
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -71,7 +67,8 @@ def objective(trial):
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-
+        # Step the scheduler at the end of each epoch
+        scheduler.step()
         #     # Track accuracy and loss
         #     _, predicted = torch.max(outputs.data, 1)
         #     total += labels.size(0)

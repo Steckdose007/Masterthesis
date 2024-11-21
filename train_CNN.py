@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D 
+from model import CNN1D , CNNMFCC
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset  
 from sklearn.model_selection import train_test_split
@@ -12,7 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  
 
-def train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=10,best_model_filename = None):
+def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
     train_losses = []
     test_losses = []
@@ -55,7 +55,8 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
         epoch_acc = correct / total
         train_losses.append(epoch_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Train Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}")
-
+        # Step the scheduler
+        scheduler.step()
         # Evaluate on the test set
         test_loss, test_acc = evaluate_model(model, test_loader, criterion)
         if test_acc > best_test_acc:
@@ -120,9 +121,9 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
     segments_train, segments_test = train_test_split(words_segments, random_state=42, test_size=0.20)
-
+    
     # Set target length for padding/truncation
     # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
     target_length_8kHz = int(1.2*11811) 
@@ -130,15 +131,16 @@ if __name__ == "__main__":
     target_length_24kHz = int(1.2*35433)  
     target_length_32kHz = int(1.2*47244)  
     target_length_44kHz = int(1.2*65108) 
-    target_length_24kHz_MFCC = int(35433)#data augmentstion already done
-    target_length = target_length_24kHz
-
+    target_length_24kHz_MFCC = int(148)#data augmentstion already done and number of frames.
+    target_length = target_length_24kHz_MFCC
+    # Set MFCC parameters
+    n_mfcc = 24  # Number of MFCC coefficients
 
     # Hyperparameters
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
-    learning_rate = 0.001
+    learning_rate = 0.0001
     num_epochs = 15
-    batch_size = 32
+    batch_size = 16
     # Create dataset 
     segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
     segments_train = AudioSegmentDataset(segments_train, target_length, augment = True)
@@ -150,11 +152,12 @@ if __name__ == "__main__":
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
-    model = CNN1D(num_classes,target_length).to(device)  
+    model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
+    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"best_cnn1d_model_{timestamp}.pth"
+    best_model_filename = f"best_cnn2D_{timestamp}.pth"
     
-    train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)

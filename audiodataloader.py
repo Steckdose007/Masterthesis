@@ -289,15 +289,15 @@ class AudioDataLoader:
                                         #add MFCC with augmentation
                                         adjusted_segment = apply_augmentation(adjusted_segment,self.target_sr)
                                         adjusted_segment=self.compute_mfcc_features(adjusted_segment,self.target_sr)
-                                    self.word_segments.append(
-                                        AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                    end_time=int(word_start+adjusted_end), 
-                                                    audio_data=adjusted_segment, 
-                                                    sample_rate=self.target_sr, 
-                                                    label=word_label,
-                                                    label_path=self.label_path,
-                                                    path = wav_file)
-                                    )
+                                        self.word_segments.append(
+                                            AudioSegment(start_time=int(word_start+adjusted_start), 
+                                                        end_time=int(word_start+adjusted_end), 
+                                                        audio_data=adjusted_segment, 
+                                                        sample_rate=self.target_sr, 
+                                                        label=word_label,
+                                                        label_path=self.label_path,
+                                                        path = wav_file)
+                                        )
                                 # Check if we are past the word "Xylophone"
                                 if word_label == self.dividing_word:
                                     dividing_word = True
@@ -516,7 +516,7 @@ def get_box_length(words_segments):
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True,compute_MFCC = True)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True,compute_MFCC = True)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -531,27 +531,32 @@ if __name__ == "__main__":
 
 
     #phones_segments = loader.create_dataclass_phones()
-    words_segments = loader.create_dataclass_words()
+    #words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    loader.save_segments_to_pickle(words_segments, "MFCC__24kHz.pkl")
+    #loader.save_segments_to_pickle(words_segments, "MFCC__24kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    #words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     biggest_sample=0
-    # Calculate word lengths for each word and group them by file path
+    # Calculate word lengths for each word and group them by fil path
     for word_segment in words_segments:
-        if(biggest_sample<word_segment.audio_data.size):
-            biggest_sample = word_segment.audio_data.size
+        if(biggest_sample<word_segment.audio_data.shape[1]):
+            print(word_segment.audio_data.shape)
+            biggest_sample = word_segment.audio_data.shape[1]
+            print(biggest_sample,word_segment.label)
     print("biggest sample: ",biggest_sample)
-    print("Avg Length 1: ",sum_length/np.shape(words_segments)[0])
     sum_length =0
     #get_box_length(words_segments)
-    print("Avg Length: ",sum_length/np.shape(words_segments)[0])
+    max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
+    print("max_length: ",max_length)
     print("shape",np.shape(words_segments))
     print(np.shape(words_segments[1].audio_data))
+    print(words_segments[1].audio_data.size)
+    print(words_segments[1].audio_data.shape[1])
+
     #print(np.shape(sentences_segments),type(sentences_segments))
     
     print("WORDS:::::::::::::::::::::::::::::::")

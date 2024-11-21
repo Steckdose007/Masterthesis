@@ -47,10 +47,7 @@ class AudioSegmentDataset(Dataset):
         label = 0
         if(segment.label_path == "sigmatism"):
             label = 1
-        # Apply augmentation to a subset of samples (e.g., 50% chance)
-        if self.augment and random.random() < 0.8:  # 80% chance of augmentation
-            audio_data = apply_augmentation(audio_data, segment.sample_rate)
-        padded_audio = self.pad_audio(audio_data, self.target_length)
+        padded_audio = self.pad_mfcc(audio_data, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
@@ -59,8 +56,8 @@ class AudioSegmentDataset(Dataset):
         audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0)  
 
         return audio_tensor, label
-
-    def pad_audio(self,audio_data, target_length):
+    #target frames was found out impirical.
+    def pad_mfcc(self, mfcc, target_frames = 148):        
         """
         Pad the audio signal to a fixed target length.
         If the audio is shorter, pad with zeros. If longer, truncate.
@@ -72,12 +69,15 @@ class AudioSegmentDataset(Dataset):
         Returns:
         - Padded or truncated audio data.
         """
-        if len(audio_data) < target_length:
-            # Pad with zeros if the audio is too short
-            return np.pad(audio_data, (0, target_length - len(audio_data)), mode='constant')
+        n_mfcc, time_frames = mfcc.shape
+        #print(n_mfcc,time_frames)
+        if time_frames < target_frames:
+            # Pad with zeros if too short
+            padding = target_frames - time_frames
+            return np.pad(mfcc, ((0, 0), (0, padding)), mode='constant')
         else:
-            # Truncate if the audio is too long
-            return audio_data[:target_length]
+            # Truncate if too long
+            return mfcc[:, :target_frames]
         
     
 def visualize_augmentations(audio_data, sample_rate):
