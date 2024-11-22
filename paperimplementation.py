@@ -98,7 +98,6 @@ def plot_mel_spectrogram(word, phone=None):
     plt.ylabel('Mel Frequency (Hz)')
     plt.show()
 
-
 # Plot spectrogram with frequencies on the y-axis and time on the x-axis
 def plot_spectrogram(signal, sample_rate, label, n_fft=2048, hop_length=512):
     # Compute the Short-Time Fourier Transform (STFT)

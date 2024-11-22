@@ -42,6 +42,7 @@ import numpy as np
 import pandas as pd
 from numba import jit
 import timeit 
+import plotting
 from data_augmentation import apply_augmentation
 sum_length =0
 
@@ -51,9 +52,9 @@ class AudioSegment:
     end_time: float
     audio_data: np.ndarray
     sample_rate: int
-    label: str  
-    label_path: str
-    path: str
+    label: str  #word for example sonne
+    label_path: str # sigmatism or normal
+    path: str # which file it is from
 
 @jit(nopython=True)
 def rolling_std(signal, window_size):
@@ -247,7 +248,7 @@ class AudioDataLoader:
                         AudioSegment(start_time=start_time, 
                                     end_time=end_time, 
                                     audio_data=segment, 
-                                    sample_rate= sample_rate, 
+                                    sample_rate= row[5], 
                                     label=row[3],
                                     label_path=self.label_path,
                                     path = wav_file)
@@ -512,11 +513,78 @@ def get_box_length(words_segments):
     # Show the boxplot
     plt.show()
 
+def find_pairs(audio_segments,phones_segments):
+    sigmatism = None
+    normal = None
+    phones =["z","s","Z","S","ts"]
+    phones_list_normal = []
+    phones_list_sigmatism = []
+    segment = audio_segments[507]
+    
+    if segment.label_path == "sigmatism":
+        print("It is Sigmatism")
+        sigmatism = segment
+        matching_path = segment.path.replace("sigmatism", "normal")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base[:-4]}{ext}"
+        print("PATH:",path)
+        for normal in audio_segments:
+            if (normal.label_path == "normal" and
+                normal.label == segment.label and
+                normal.path == path):
+                print("Found normal pair")
 
+                for phone in phones_segments:
+                    if (phone.label_path == "normal" and
+                        phone.label in phones and
+                        phone.path == path and
+                        phone.sample_rate == sigmatism.label):
+                        phones_list_normal.append(phone)
+
+                    if (phone.label_path == "sigmatism" and
+                        phone.label in phones and
+                        phone.path == segment.path and
+                        phone.sample_rate == sigmatism.label):
+                        phones_list_sigmatism.append(phone)
+
+
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism
+    
+    if segment.label_path == "normal":
+        print("It is Normal")
+        normal =segment
+        matching_path = segment.path.replace("normal", "sigmatism")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base}_sig{ext}"
+        for sigmatism in audio_segments:
+            if (sigmatism.label_path == "sigmatism" and
+                sigmatism.label == normal.label and
+                sigmatism.path == path):
+                print("Found sigmatism pair")
+
+                for normal_phone in phones_segments:
+                    if (normal_phone.label_path == "normal" and
+                        normal_phone.label in phones and
+                        normal_phone.path == normal.path and
+                        normal_phone.sample_rate == sigmatism.label):
+                        phones_list_normal.append(normal_phone)
+
+                    if (normal_phone.label_path == "sigmatism" and
+                        normal_phone.label in phones and
+                        normal_phone.path == path and
+                        normal_phone.sample_rate == sigmatism.label):
+                        phones_list_sigmatism.append(normal_phone)
+
+
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
+
+    # If no pair is found, return None
+    print("ERROR...............................................ERROR")
+    return None, None,None,None
 
 if __name__ == "__main__":
 
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True,compute_MFCC = True)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=False, downsample=True,compute_MFCC = False)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
@@ -534,41 +602,31 @@ if __name__ == "__main__":
     #words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
     # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    #loader.save_segments_to_pickle(words_segments, "MFCC__24kHz.pkl")
+    #loader.save_segments_to_pickle(phones_segments, "phones__24kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_24kHz.pkl")
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    biggest_sample=0
-    # Calculate word lengths for each word and group them by fil path
-    for word_segment in words_segments:
-        if(biggest_sample<word_segment.audio_data.shape[1]):
-            print(word_segment.audio_data.shape)
-            biggest_sample = word_segment.audio_data.shape[1]
-            print(biggest_sample,word_segment.label)
-    print("biggest sample: ",biggest_sample)
-    sum_length =0
-    #get_box_length(words_segments)
-    max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
-    print("max_length: ",max_length)
-    print("shape",np.shape(words_segments))
-    print(np.shape(words_segments[1].audio_data))
-    print(words_segments[1].audio_data.size)
-    print(words_segments[1].audio_data.shape[1])
+    # biggest_sample=0
+    # # Calculate word lengths for each word and group them by fil path
+    # for word_segment in words_segments:
+    #     if(biggest_sample<word_segment.audio_data.shape[1]):
+    #         print(word_segment.audio_data.shape)
+    #         biggest_sample = word_segment.audio_data.shape[1]
+    #         print(biggest_sample,word_segment.label)
+    # print("biggest sample: ",biggest_sample)
+    # sum_length =0
+    # #get_box_length(words_segments)
+    # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
+    # print("max_length: ",max_length)
+    # print("shape",np.shape(words_segments))
+    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
+    plotting.plot_mel_spectrogram(sigmatism,phones_list_sigmatism)
+    plotting.plot_mel_spectrogram(normal,phones_list_normal)
 
-    #print(np.shape(sentences_segments),type(sentences_segments))
-    
-    print("WORDS:::::::::::::::::::::::::::::::")
-    for i in range(5):
-        print((words_segments[i].end_time-words_segments[i].start_time)/words_segments[i].sample_rate,words_segments[i].label_path)
-        
-    # print("PHONES::::::::::::::::::::::::::::::")
-    # for i in range(5):
-    #     print((phones_segments[i].end_time-phones_segments[i].start_time)/phones_segments[i].sample_rate,phones_segments[i].label_path)
    
-    # print("SENTENCES:::::::::::::::::::::::::::")
-    # for i in range(5):
-    #     print((sentences_segments[i].end_time-sentences_segments[i].start_time)/sentences_segments[i].sample_rate,sentences_segments[i].label_path)
+   
 
-    
+  
