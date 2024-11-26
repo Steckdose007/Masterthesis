@@ -43,7 +43,6 @@ import pandas as pd
 from numba import jit
 import timeit 
 import plotting
-from data_augmentation import apply_augmentation
 sum_length =0
 word_lengths_by_webmouse = {}
 
@@ -111,6 +110,7 @@ class AudioDataLoader:
         Returns:
         - A list of tuples, each containing a pair of .wav and .csv file paths.
         """
+        i=0
         if not (self.phone_bool == False and self.word_bool == False and self.sentence_bool == False):
             for path in self.folder_path:
                 self.label_path = os.path.basename(path)
@@ -123,6 +123,8 @@ class AudioDataLoader:
                     base_name = os.path.splitext(wav_file)[0]
                     corresponding_csv = base_name + '.csv'
                     if corresponding_csv in csv_files:
+                        i+=1
+                        print(i)
                         self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
             return file_pairs
 
@@ -264,10 +266,12 @@ class AudioDataLoader:
                         if not dividing_word and not current_sentence:                       
                             if not dividing_word:
                                 end_time = start_time  # because the word ends at the beginning of the pause but 5 ms already substracted and then the 5ms on top
+                                #Make a plot with word length by webmouse
                                 if self.label_path not in word_lengths_by_webmouse:
-                                     word_lengths_by_webmouse[word_segment.label_path].append(word_length)[self.label_path] = []
+                                     word_lengths_by_webmouse[self.label_path] = []
                                 word_length = (end_time - word_start) / 44100   
                                 word_lengths_by_webmouse[self.label_path].append(word_length)
+
                                 if self.word_bool:
                                     ###make rolling std
                                     word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
@@ -280,32 +284,15 @@ class AudioDataLoader:
                                     ###till here
                                     if(self.downsample):
                                         adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                    if(self.compute_MFCC and adjusted_segment.size > 2048):# because the DTF is using 2048 points
-                                        adjusted_mfcc = self.compute_mfcc_features(adjusted_segment,self.target_sr)
-                                        #add MFCC without augmentation 
-                                        self.word_segments.append(
-                                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                        end_time=int(word_start+adjusted_end), 
-                                                        audio_data=adjusted_mfcc, 
-                                                        sample_rate=self.target_sr, 
-                                                        label=word_label,
-                                                        label_path=self.label_path,
-                                                        path = wav_file)
-                                        )
-
-                                    if(self.compute_MFCC and adjusted_segment.size > 2048):
-                                        #add MFCC with augmentation
-                                        adjusted_segment = apply_augmentation(adjusted_segment,self.target_sr)
-                                        adjusted_segment=self.compute_mfcc_features(adjusted_segment,self.target_sr)
-                                        self.word_segments.append(
-                                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                        end_time=int(word_start+adjusted_end), 
-                                                        audio_data=adjusted_segment, 
-                                                        sample_rate=self.target_sr, 
-                                                        label=word_label,
-                                                        label_path=self.label_path,
-                                                        path = wav_file)
-                                        )
+                                    self.word_segments.append(
+                                        AudioSegment(start_time=int(word_start+adjusted_start), 
+                                                    end_time=int(word_start+adjusted_end), 
+                                                    audio_data=adjusted_segment, 
+                                                    sample_rate=self.target_sr, 
+                                                    label=word_label,
+                                                    label_path=self.label_path,
+                                                    path = wav_file)
+                                    )
                                 # Check if we are past the word "Xylophone"
                                 if word_label == self.dividing_word:
                                     dividing_word = True
@@ -353,84 +340,9 @@ class AudioDataLoader:
                         if current_sentence and word_label == current_sentence[1]:  # Last word of sentence
                             sentence_will_end = True
 
-
-            # Append any remaining word or sentence if any
-            if word_segment:
-                if dividing_word and current_sentence:
-                    if self.sentence_bool:
-                        segment = audio_data[int(sentence_start):int(sentence_end)]
-                        if(self.downsample):
-                            segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                        if(self.compute_MFCC):
-                            adjusted_mfcc = self.compute_mfcc_features(adjusted_segment,self.target_sr)
-                            #add MFCC without augmentation 
-                            self.word_segments.append(
-                                AudioSegment(start_time=int(word_start+adjusted_start), 
-                                            end_time=int(word_start+adjusted_end), 
-                                            audio_data=adjusted_mfcc, 
-                                            sample_rate=self.target_sr, 
-                                            label=word_label,
-                                            label_path=self.label_path,
-                                            path = wav_file)
-                            )
-                        if(self.compute_MFCC):
-                            #add MFCC with augmentation
-                            adjusted_segment = apply_augmentation(adjusted_segment,self.target_sr)
-                            adjusted_segment=self.compute_mfcc_features(adjusted_segment,self.target_sr)
-                        self.word_segments.append(
-                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                        end_time=int(word_start+adjusted_end), 
-                                        audio_data=adjusted_segment, 
-                                        sample_rate=self.target_sr, 
-                                        label=word_label,
-                                        label_path=self.label_path,
-                                        path = wav_file)
-                        )
-                elif not dividing_word:
-                    if self.word_bool:
-                        ###make rolling std
-                        word_start = (int(word_start-(self.buffer_word*sample_rate)))
-                        end_time = (int(end_time+(self.buffer_word*sample_rate)))
-                        segment = audio_data[int(word_start):int(end_time)]
-                        adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,word_label)
-                        adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
-                        ###till here
-                        if(self.downsample):
-                            adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                        self.word_segments.append(
-                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                        end_time=int(word_start+adjusted_end), 
-                                        audio_data=adjusted_segment, 
-                                        sample_rate=sample_rate, 
-                                        label=word_label,
-                                        label_path=self.label_path,
-                                        path = wav_file)
-                        )
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
     
-    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=25.6e-3, hop_size=10e-3, n_fft=2048):
-        try:
-            # Convert frame and hop size from seconds to samples
-            frame_length = int(frame_size * sample_rate)
-            hop_length = int(hop_size * sample_rate)
-            
-            # Compute the static MFCCs using librosa's mfcc function
-            mfccs = librosa.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc, 
-                                        n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
-            
-            # Compute the first-order difference (Delta MFCCs) using a 5-frame window
-            mfcc_delta = librosa.feature.delta(mfccs, width=5)
-            
-            # Compute the second-order difference (Delta-Delta MFCCs)
-            #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
-            
-            # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
-            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
-            #print(np.shape(mfcc_features))
-            return mfcc_features
-        except:
-            print("ERROR: ",np.shape(signal))
 
     def save_segments_to_pickle(self,audio_segments: List[AudioSegment], filename: str):
         """
@@ -511,8 +423,8 @@ def get_box_length(words_segments):
     # Create a boxplot for word lengths by file
     plt.figure(figsize=(12, 6))
     plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys(),vert=False)
-    plt.title("Distribution of Word Lengths by File")
-    plt.ylabel("Files")
+    plt.title("Distribution of Word Lengths by Label")
+    plt.ylabel("Label")
     plt.xlabel("Word Length (seconds)")
     plt.tight_layout()
 
@@ -589,21 +501,19 @@ def find_pairs(audio_segments,phones_segments):
     return None, None,None,None
 
 if __name__ == "__main__":
-
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=False, downsample=True,compute_MFCC = False)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True,compute_MFCC = False)
     # # Sample signal data
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
     # window_size = 100
     # Create a boxplot for word lengths by file
+    print(np.shape(word_lengths_by_webmouse))
     plt.figure(figsize=(12, 6))
-    plt.boxplot([word_lengths for word_lengths in word_lengths_by_webmouse.values()], labels=word_lengths_by_file.keys(),vert=False)
-    plt.title("Distribution of Word Lengths by File")
-    plt.ylabel("Files")
+    plt.boxplot([word_lengths for word_lengths in word_lengths_by_webmouse.values()], labels=word_lengths_by_webmouse.keys(),vert=False)
+    plt.title("Distribution of Webmouse Lengths by Label")
+    plt.ylabel("Label")
     plt.xlabel("Word Length (seconds)")
     plt.tight_layout()
-
-    # Show the boxplot
     plt.show()
     # # Timing the Numba implementation
     # numba_time = timeit.timeit(lambda: rolling_std_numba(signal, window_size), number=10)
@@ -614,13 +524,13 @@ if __name__ == "__main__":
 
 
     #phones_segments = loader.create_dataclass_phones()
-    #words_segments = loader.create_dataclass_words()
+    words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
-    # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    #loader.save_segments_to_pickle(phones_segments, "phones__24kHz.pkl")
+    #loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
+    loader.save_segments_to_pickle(words_segments, "words__24kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_24kHz.pkl")
+    #phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    #words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_24kHz.pkl")
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     # biggest_sample=0
@@ -632,6 +542,7 @@ if __name__ == "__main__":
     #         print(biggest_sample,word_segment.label)
     # print("biggest sample: ",biggest_sample)
     # sum_length =0
+    
     get_box_length(words_segments)
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)

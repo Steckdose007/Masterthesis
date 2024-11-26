@@ -47,15 +47,43 @@ class AudioSegmentDataset(Dataset):
         label = 0
         if(segment.label_path == "sigmatism"):
             label = 1
-        padded_audio = self.pad_mfcc(audio_data, self.target_length)
+        if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
+            audio_data = apply_augmentation(audio_data, segment.sample_rate)
+        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
+        padded_audio = self.pad_mfcc(mfcc, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
         # However, CNNs expect the input to have a channel dimension, 
         # which is why we add this extra dimension.
-        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0)  
+        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32)
 
         return audio_tensor, label
+
+    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=25.6e-3, hop_size=10e-3, n_fft=2048):
+        try:
+            # Convert frame and hop size from seconds to samples
+            frame_length = int(frame_size * sample_rate)
+            hop_length = int(hop_size * sample_rate)
+            
+            # Compute the static MFCCs using librosa's mfcc function
+            mfccs = librosa.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc, 
+                                        n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
+            
+            # Compute the first-order difference (Delta MFCCs) using a 5-frame window
+            mfcc_delta = librosa.feature.delta(mfccs, width=5)
+            
+            # Compute the second-order difference (Delta-Delta MFCCs)
+            #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
+            
+            # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
+            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
+            #print(np.shape(mfcc_features))
+            return mfcc_features
+        except:
+            print("ERROR: ",np.shape(signal))
+
+
     #target frames was found out impirical.
     def pad_mfcc(self, mfcc, target_frames = 148):        
         """
@@ -196,18 +224,48 @@ def plot_frequ_and_acc():
     plt.tight_layout()
     plt.show()
 
+def plot_mfcc(mfcc_tensor, sample_rate= 24000, title="MFCC"):
+
+    """
+    Plot the MFCC features as a heatmap.
+
+    Parameters:
+    - mfcc_tensor: The MFCC features (2D numpy array or PyTorch tensor).
+    - sample_rate: The sample rate of the audio.
+    - title: Title for the plot.
+    """
+    # Convert tensor to numpy array if necessary
+    if isinstance(mfcc_tensor, torch.Tensor):
+        mfcc_tensor = mfcc_tensor.squeeze().numpy()
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    librosa.display.specshow(mfcc_tensor, sr=sample_rate, x_axis='time', y_axis='mel', cmap='viridis')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title(title)
+    plt.xlabel("Time")
+    plt.ylabel("MFCC Coefficients")
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
     # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("all_words_segments.pkl")
-    visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
+    words_segments = loader.load_segments_from_pickle("words__24kHz.pkl")
+    #visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
     #print(np.shape(words_segments))
     # target_length = int(1.2*11811)    
-    # audio_dataset = AudioSegmentDataset(words_segments, target_length)
-    # compute_average_spectrum_from_dataset(audio_dataset)
+    target_length_24kHz_MFCC = int(148)
+    audio_dataset = AudioSegmentDataset(words_segments, target_length_24kHz_MFCC, augment=False)
+    mfcc_tensor, label = audio_dataset[507]  # Fetch the first sample
+    print(f"Label: {'Sigmatism' if label == 1 else 'Normal'}")
+    print(mfcc_tensor.shape)
+    # Plot the MFCC
+    plot_mfcc(mfcc_tensor)
+    #compute_average_spectrum_from_dataset(audio_dataset)
 
     # # Create DataLoader
     # train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True)

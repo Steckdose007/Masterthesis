@@ -11,6 +11,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  
+from collections import defaultdict
 
 def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
@@ -116,14 +117,38 @@ def plot_losses(train_losses, test_losses,best_model_filename,best_test_acc):
     plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
     plt.show()
 
+def split_list_after_speaker(words_segments):
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        speaker = os.path.basename(segment.path).replace('_sig', '')
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.20)
+    
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    print(f"Number of speakers in train: {len(speakers_train)}, test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+    return segments_train, segments_test
+
 if __name__ == "__main__":
     # Load your dataset
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
-    segments_train, segments_test = train_test_split(words_segments, random_state=42, test_size=0.20)
-    
+    words_segments = loader.load_segments_from_pickle("words__24kHz.pkl")
+    segments_train, segments_test = split_list_after_speaker(words_segments)
+    print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
     # Set target length for padding/truncation
     # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
     target_length_8kHz = int(1.2*11811) 
@@ -160,4 +185,4 @@ if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     best_model_filename = f"best_cnn2D_{timestamp}.pth"
     
-    train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    #train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)

@@ -1,0 +1,34 @@
+digraph Speakers {
+	size="10,7"
+	root [label="All Speakers"]
+	Speaker1 [label=Speaker1]
+	root -> Speaker1
+	Speaker1_normal [label="Normal (5)"]
+	Speaker1 -> Speaker1_normal
+	Speaker1_sigmatism [label=Sigmatism]
+	Speaker1 -> Speaker1_sigmatism
+	Speaker1_sigmatism_mild [label="mild (2)"]
+	Speaker1_sigmatism -> Speaker1_sigmatism_mild
+	Speaker1_sigmatism_severe [label="severe (3)"]
+	Speaker1_sigmatism -> Speaker1_sigmatism_severe
+	Speaker2 [label=Speaker2]
+	root -> Speaker2
+	Speaker2_normal [label="Normal (7)"]
+	Speaker2 -> Speaker2_normal
+	Speaker2_sigmatism [label=Sigmatism]
+	Speaker2 -> Speaker2_sigmatism
+	Speaker2_sigmatism_mild [label="mild (4)"]
+	Speaker2_sigmatism -> Speaker2_sigmatism_mild
+	Speaker2_sigmatism_severe [label="severe (1)"]
+	Speaker2_sigmatism -> Speaker2_sigmatism_severe
+	Speaker3 [label=Speaker3]
+	root -> Speaker3
+	Speaker3_normal [label="Normal (10)"]
+	Speaker3 -> Speaker3_normal
+	Speaker3_sigmatism [label=Sigmatism]
+	Speaker3 -> Speaker3_sigmatism
+	Speaker3_sigmatism_mild [label="mild (0)"]
+	Speaker3_sigmatism -> Speaker3_sigmatism_mild
+	Speaker3_sigmatism_severe [label="severe (2)"]
+	Speaker3_sigmatism -> Speaker3_sigmatism_severe
+}
