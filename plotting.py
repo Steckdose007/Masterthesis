@@ -4,7 +4,7 @@ import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fft
-
+from scipy.signal import savgol_filter
 def plot_mel_spectrogram(word, phones=None):
     print("start: ",word.start_time/44100,phones[0].start_time/44100)
     print("end: ",word.end_time/44100,phones[0].end_time/44100)
@@ -69,40 +69,36 @@ def plot_mel_spectrogram(word, phones=None):
     plt.show()
 
 
-def compute_spectral_envelope(frames, sample_rate, n_fft=2048, cepstral_order=60):
-    spectral_envelopes = []
-    for frame in frames:
-        # Apply FFT
-        spectrum = np.abs(scipy.fft.fft(frame, n=n_fft))[:n_fft // 2]
-        # Apply logarithm to the spectrum (cepstral step)
-        log_spectrum = np.log(spectrum + 1e-10)  # Adding a small constant to avoid log(0)
-        # Apply the inverse FFT to get the cepstrum
-        cepstrum = np.real(scipy.fft.ifft(log_spectrum))
-        # Apply cepstral smoothing by keeping only the first `cepstral_order` coefficients
-        smoothed_spectrum = scipy.fft.fft(cepstrum[:cepstral_order], n=n_fft)
-        spectral_envelopes.append(np.abs(smoothed_spectrum[:n_fft // 2]))
-    return np.array(spectral_envelopes)
+def compare_spectral_envelopes(word1, word2, n_fft=2048, smoothing_window=51, poly_order=3):
+    
+    # Extract audio data and sample rates
+    signal1, sr1, label1 = word1.audio_data, word1.sample_rate, word1.label_path
+    signal2, sr2, label2 = word2.audio_data, word2.sample_rate, word2.label_path
+    
+    if sr1 != sr2:
+        raise ValueError("Sample rates of the two words must be the same for comparison.")
+    
+    # Compute FFT and magnitude for the first word
+    fft1 = np.fft.fft(signal1, n=n_fft)
+    magnitude1 = np.abs(fft1[:n_fft // 2])  # Take positive frequencies only
+    frequencies = np.fft.fftfreq(n_fft, 1 / sr1)[:n_fft // 2]
+    spectral_envelope1 = savgol_filter(magnitude1, smoothing_window, poly_order)
 
-def plot_frequencies(spectral_envelopes):#, spectral_envelopes1):
-    # Convert amplitude to dB (logarithmic scale) for both sets of spectral envelopes
-    spectral_envelopes_db = 20 * np.log10(spectral_envelopes + 1e-10)  # Adding small constant to avoid log(0)
-    n_fft=2048,
-    sample_rate = 24000
-    # Calculate frequency bins
-    frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
+    # Compute FFT and magnitude for the second word
+    fft2 = np.fft.fft(signal2, n=n_fft)
+    magnitude2 = np.abs(fft2[:n_fft // 2])  # Take positive frequencies only
+    spectral_envelope2 = savgol_filter(magnitude2, smoothing_window, poly_order)
 
-    # Plot the first set of spectral envelopes in dB
-    plt.figure(figsize=(10, 6))
-    plt.plot(frequencies, np.mean(spectral_envelopes_db, axis=0), label='Spectral Envelopes interdental', color='blue')
-
-    # Plot the second set of spectral envelopes in dB
-    #spectral_envelopes1_db = 20 * np.log10(spectral_envelopes1 + 1e-10)  # Adding small constant to avoid log(0)
-    #plt.plot(frequencies, np.mean(spectral_envelopes1_db, axis=0), label='Spectral Envelopes normal', color='red')
-
-    # Add titles and labels
-    plt.title(f'Spectral Envelopes Comparison for {word.label}')
+    # Plot the spectral envelopes
+    plt.figure(figsize=(12, 8))
+    plt.plot(frequencies, spectral_envelope1, label=f'Spectral Envelope ({label1})', color='blue', linewidth=2)
+    plt.plot(frequencies, spectral_envelope2, label=f'Spectral Envelope ({label2})', color='orange', linewidth=2)
+    plt.title(f'Comparison of Spectral Envelopes for {word1.label}')
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Amplitude (dB)')
+    plt.ylabel('Amplitude')
     plt.legend()
+    plt.grid()
     plt.show()
+
+
 

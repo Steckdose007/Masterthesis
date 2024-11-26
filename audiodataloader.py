@@ -45,6 +45,7 @@ import timeit
 import plotting
 from data_augmentation import apply_augmentation
 sum_length =0
+word_lengths_by_webmouse = {}
 
 @dataclass
 class AudioSegment:
@@ -190,6 +191,8 @@ class AudioDataLoader:
         return adjusted_start, adjusted_end
 
     def process_csv(self,wav_file,csv_file):
+        global word_lengths_by_webmouse
+
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
         # Normalize the audio to the range [-1, 1]
@@ -261,6 +264,10 @@ class AudioDataLoader:
                         if not dividing_word and not current_sentence:                       
                             if not dividing_word:
                                 end_time = start_time  # because the word ends at the beginning of the pause but 5 ms already substracted and then the 5ms on top
+                                if self.label_path not in word_lengths_by_webmouse:
+                                     word_lengths_by_webmouse[word_segment.label_path].append(word_length)[self.label_path] = []
+                                word_length = (end_time - word_start) / 44100   
+                                word_lengths_by_webmouse[self.label_path].append(word_length)
                                 if self.word_bool:
                                     ###make rolling std
                                     word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
@@ -485,17 +492,17 @@ def get_box_length(words_segments):
     for word_segment in words_segments:
         sum_length += (word_segment.end_time - word_segment.start_time)
         word_length = (word_segment.end_time - word_segment.start_time) / word_segment.sample_rate
-        if word_length > 1.2:
-            # Plot the original signal and the rolling standard deviation
-            leng = str(int(word_segment.end_time - word_segment.start_time))
-            plt.figure(figsize=(14, 6))
-            plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
-            plt.title(str(word_length) + "    " + word_segment.label + "  "+ word_segment.path + leng)
-            plt.xlabel('Time')
-            plt.ylabel('Amplitude')
-            plt.legend()
-            plt.grid()
-            plt.show()
+        # if word_length > 1.2:
+        #     # Plot the original signal and the rolling standard deviation
+        #     leng = str(int(word_segment.end_time - word_segment.start_time))
+        #     plt.figure(figsize=(14, 6))
+        #     plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
+        #     plt.title(str(word_length) + "    " + word_segment.label + "  "+ word_segment.path + leng)
+        #     plt.xlabel('Time')
+        #     plt.ylabel('Amplitude')
+        #     plt.legend()
+        #     plt.grid()
+        #     plt.show()
             
         if word_segment.label_path not in word_lengths_by_file:
             word_lengths_by_file[word_segment.label_path] = []
@@ -503,11 +510,10 @@ def get_box_length(words_segments):
 
     # Create a boxplot for word lengths by file
     plt.figure(figsize=(12, 6))
-    plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys())
+    plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys(),vert=False)
     plt.title("Distribution of Word Lengths by File")
-    plt.xlabel("Files")
-    plt.ylabel("Word Length (seconds)")
-    plt.xticks(rotation=90)
+    plt.ylabel("Files")
+    plt.xlabel("Word Length (seconds)")
     plt.tight_layout()
 
     # Show the boxplot
@@ -589,7 +595,16 @@ if __name__ == "__main__":
     # np.random.seed(0)
     # signal = np.random.randn(100000)  # Large array for performance testing
     # window_size = 100
-    
+    # Create a boxplot for word lengths by file
+    plt.figure(figsize=(12, 6))
+    plt.boxplot([word_lengths for word_lengths in word_lengths_by_webmouse.values()], labels=word_lengths_by_file.keys(),vert=False)
+    plt.title("Distribution of Word Lengths by File")
+    plt.ylabel("Files")
+    plt.xlabel("Word Length (seconds)")
+    plt.tight_layout()
+
+    # Show the boxplot
+    plt.show()
     # # Timing the Numba implementation
     # numba_time = timeit.timeit(lambda: rolling_std_numba(signal, window_size), number=10)
     # print(f"Numba implementation time: {numba_time / 10:.5f} seconds")
@@ -617,14 +632,15 @@ if __name__ == "__main__":
     #         print(biggest_sample,word_segment.label)
     # print("biggest sample: ",biggest_sample)
     # sum_length =0
-    # #get_box_length(words_segments)
+    get_box_length(words_segments)
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)
     # print("shape",np.shape(words_segments))
     sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
     print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
-    plotting.plot_mel_spectrogram(sigmatism,phones_list_sigmatism)
-    plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    #plotting.plot_mel_spectrogram(sigmatism,phones_list_sigmatism)
+    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    plotting.compare_spectral_envelopes(sigmatism, normal)
 
    
    
