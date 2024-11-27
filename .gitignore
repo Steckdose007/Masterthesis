@@ -11,7 +11,7 @@
 # Built Visual Studio Code Extensions
 *.vsix
 /all_words_segments.pkl
-words__24kHz.pkl
+words_atleast2048long_24kHz.pkl
 all_words_segments.pkl
 all_words_downsampled_to_8kHz.pkl
 all_words_downsampled_to_16kHz.pkl

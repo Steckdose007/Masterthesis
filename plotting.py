@@ -6,16 +6,14 @@ import numpy as np
 import scipy.fft
 from scipy.signal import savgol_filter
 def plot_mel_spectrogram(word, phones=None):
-    print("start: ",word.start_time/44100,phones[0].start_time/44100)
-    print("end: ",word.end_time/44100,phones[0].end_time/44100)
 
     signal = word.audio_data
     sample_rate = 24000
-    label = word.label_path
     scaling=24000/44100
     # Compute Mel-spectrogram
     mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=128)
     mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    print(np.shape(mel_spectrogram_db))
     # Create a figure with two subplots
     fig, axs = plt.subplots(2, 1, figsize=(12, 8), gridspec_kw={'height_ratios': [1, 3]})
 
@@ -28,6 +26,8 @@ def plot_mel_spectrogram(word, phones=None):
 
     # Plot phone boundaries on the waveform
     if phones:
+        print("start: ",word.start_time/44100,phones[0].start_time/44100)
+        print("end: ",word.end_time/44100,phones[0].end_time/44100)
         for p in phones:
             # Adjust phone start and end times relative to the word start
             phone_start_sample = abs(int((p.start_time*scaling - word.start_time*scaling)))
@@ -41,7 +41,10 @@ def plot_mel_spectrogram(word, phones=None):
     axs[0].legend()
 
     # Plot the Mel spectrogram
-    librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm', ax=axs[1])
+    img = axs[1].imshow(mel_spectrogram_db, aspect='auto', origin='lower', cmap='coolwarm')
+    cbar = plt.colorbar(img, ax=axs[1], orientation='vertical', pad=0.01)
+    cbar.set_label('Intensity (dB)', rotation=270, labelpad=15)
+    #librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm', ax=axs[1])
     axs[1].set_title(f"Mel Spectrogram for {word.label} {word.label_path}")
     axs[1].set_xlabel("Time (s)")
     axs[1].set_ylabel("Mel Frequency (Hz)")
@@ -68,6 +71,59 @@ def plot_mel_spectrogram(word, phones=None):
     plt.tight_layout()
     plt.show()
 
+def plot_mfcc_and_mel_spectrogram(segment, sample_rate=24000, n_mfcc=40, n_mels=128, frame_size=0.025, hop_size=0.005, n_fft=2048):
+    """
+    Plot MFCCs and Mel Spectrogram side by side.
+    
+    Parameters:
+    - signal: The audio signal (1D NumPy array).
+    - sample_rate: Sampling rate of the audio signal.
+    - n_mfcc: Number of MFCC coefficients to compute.
+    - n_mels: Number of Mel bands to use for the spectrogram.
+    - frame_size: Frame size in seconds.
+    - hop_size: Hop size in seconds.
+    - n_fft: Number of FFT points.
+    """
+    signal = segment.audio_data
+    sample_rate = segment.sample_rate
+    # Convert frame and hop sizes to samples
+    frame_length = int(frame_size * sample_rate)
+    hop_length = int(hop_size * sample_rate)
+    
+    # Compute Mel Spectrogram
+    mel_spectrogram = librosa.feature.melspectrogram(
+        y=signal, sr=sample_rate, n_mels=n_mels, n_fft=n_fft, hop_length=hop_length, win_length=frame_length
+    )
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    
+    # Compute MFCCs
+    mfccs = librosa.feature.mfcc(
+        y=signal, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels
+    )
+    mfccs = (mfccs - np.mean(mfccs)) / np.std(mfccs)
+    # Plotting
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Mel Spectrogram
+    img1 = librosa.display.specshow(
+        mel_spectrogram_db, sr=sample_rate, hop_length=hop_length, x_axis='time', y_axis='mel', ax=axes[0], cmap='coolwarm'
+    )
+    axes[0].set_title('Mel Spectrogram')
+    axes[0].set_xlabel('Time (s)')
+    axes[0].set_ylabel('Frequency (Hz)')
+    fig.colorbar(img1, ax=axes[0], format='%+2.0f dB')
+
+    # MFCCs
+    img2 = librosa.display.specshow(
+        mfccs, sr=sample_rate, hop_length=hop_length, x_axis='time', ax=axes[1], cmap='coolwarm'
+    )
+    axes[1].set_title('MFCCs')
+    axes[1].set_xlabel('Time (s)')
+    axes[1].set_ylabel('MFCC Coefficients')
+    fig.colorbar(img2, ax=axes[1])
+
+    plt.tight_layout()
+    plt.show()
 
 def compare_spectral_envelopes(word1, word2, n_fft=2048, smoothing_window=51, poly_order=3):
     

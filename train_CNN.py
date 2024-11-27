@@ -30,7 +30,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
 
         for inputs, labels in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
-
+            #print(inputs.shape)
             # Zero the gradients
             optimizer.zero_grad()
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("words__24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     segments_train, segments_test = split_list_after_speaker(words_segments)
     print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
     # Set target length for padding/truncation
@@ -156,12 +156,11 @@ if __name__ == "__main__":
     target_length_24kHz = int(1.2*35433)  
     target_length_32kHz = int(1.2*47244)  
     target_length_44kHz = int(1.2*65108) 
-    target_length_24kHz_MFCC = int(148)#data augmentstion already done and number of frames.
+    target_length_24kHz_MFCC = int(180)#data augmentstion already done and number of frames.
     target_length = target_length_24kHz_MFCC
-    # Set MFCC parameters
-    n_mfcc = 24  # Number of MFCC coefficients
 
     # Hyperparameters
+    n_mfcc = 128 # Number of MFCC coefficients
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
     learning_rate = 0.0001
     num_epochs = 15
@@ -183,6 +182,6 @@ if __name__ == "__main__":
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"best_cnn2D_{timestamp}.pth"
+    best_model_filename = f"best_cnn2D_lowResMFCC_{timestamp}.pth"
     
-    #train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)

@@ -49,14 +49,15 @@ class AudioSegmentDataset(Dataset):
             label = 1
         if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
-        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
-        padded_audio = self.pad_mfcc(mfcc, self.target_length)
+        #mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
+        mel_specto = self.compute_melspectogram_features(audio_data)
+        padded_audio = self.pad_mfcc(mel_specto, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
         # However, CNNs expect the input to have a channel dimension, 
         # which is why we add this extra dimension.
-        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32)
+        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
 
         return audio_tensor, label
 
@@ -78,14 +79,21 @@ class AudioSegmentDataset(Dataset):
             
             # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
             mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
-            #print(np.shape(mfcc_features))
             return mfcc_features
         except:
-            print("ERROR: ",np.shape(signal))
+            print("ERROR: ",np.shape(signal), signal.size)
 
+    def compute_melspectogram_features(self,signal, sample_rate=24000, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
+        # Convert frame and hop size from seconds to samples
+        frame_length = int(frame_size * sample_rate)
+        hop_length = int(hop_size * sample_rate)   
+        mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=n_mels,n_fft=n_fft,hop_length=hop_length,win_length=frame_length)
+        mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+        return mel_spectrogram_db
+    
 
     #target frames was found out impirical.
-    def pad_mfcc(self, mfcc, target_frames = 148):        
+    def pad_mfcc(self, mfcc, target_frames = 180):        
         """
         Pad the audio signal to a fixed target length.
         If the audio is shorter, pad with zeros. If longer, truncate.
@@ -238,14 +246,14 @@ def plot_mfcc(mfcc_tensor, sample_rate= 24000, title="MFCC"):
     if isinstance(mfcc_tensor, torch.Tensor):
         mfcc_tensor = mfcc_tensor.squeeze().numpy()
 
+    mfcc_tensor = (mfcc_tensor - np.mean(mfcc_tensor)) / np.std(mfcc_tensor)
     # Create the plot
-    plt.figure(figsize=(10, 6))
-    librosa.display.specshow(mfcc_tensor, sr=sample_rate, x_axis='time', y_axis='mel', cmap='viridis')
-    plt.colorbar(format='%+2.0f dB')
-    plt.title(title)
-    plt.xlabel("Time")
+    plt.figure(figsize=(6, 6))
+    plt.imshow(mfcc_tensor, aspect='auto', origin='lower', cmap='coolwarm')
+    plt.colorbar(label="Normalized MFCC")
+    plt.title("MFCC")
+    plt.xlabel("Frames")
     plt.ylabel("MFCC Coefficients")
-    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
@@ -254,11 +262,11 @@ if __name__ == "__main__":
     
     # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words__24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     #visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
     #print(np.shape(words_segments))
     # target_length = int(1.2*11811)    
-    target_length_24kHz_MFCC = int(148)
+    target_length_24kHz_MFCC = int(150)
     audio_dataset = AudioSegmentDataset(words_segments, target_length_24kHz_MFCC, augment=False)
     mfcc_tensor, label = audio_dataset[507]  # Fetch the first sample
     print(f"Label: {'Sigmatism' if label == 1 else 'Normal'}")
