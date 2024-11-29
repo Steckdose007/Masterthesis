@@ -71,7 +71,7 @@ def plot_mel_spectrogram(word, phones=None):
     plt.tight_layout()
     plt.show()
 
-def plot_mfcc_and_mel_spectrogram(segment, sample_rate=24000, n_mfcc=40, n_mels=128, frame_size=0.025, hop_size=0.005, n_fft=2048):
+def plot_mfcc_and_mel_spectrogram(segment, sample_rate=24000, n_mfcc=128, n_mels=128, frame_size=0.025, hop_size=0.005, n_fft=2048):
     """
     Plot MFCCs and Mel Spectrogram side by side.
     
@@ -100,7 +100,9 @@ def plot_mfcc_and_mel_spectrogram(segment, sample_rate=24000, n_mfcc=40, n_mels=
     mfccs = librosa.feature.mfcc(
         y=signal, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels
     )
-    mfccs = (mfccs - np.mean(mfccs)) / np.std(mfccs)
+    print(np.shape(mel_spectrogram))
+    print(np.shape(mfccs))
+
     # Plotting
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
     

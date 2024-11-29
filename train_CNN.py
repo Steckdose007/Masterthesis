@@ -156,7 +156,7 @@ if __name__ == "__main__":
     target_length_24kHz = int(1.2*35433)  
     target_length_32kHz = int(1.2*47244)  
     target_length_44kHz = int(1.2*65108) 
-    target_length_24kHz_MFCC = int(180)#data augmentstion already done and number of frames.
+    target_length_24kHz_MFCC = int(256)#data augmentstion already done and number of frames.
     target_length = target_length_24kHz_MFCC
 
     # Hyperparameters
@@ -180,7 +180,9 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
+    #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     best_model_filename = f"best_cnn2D_lowResMFCC_{timestamp}.pth"
     

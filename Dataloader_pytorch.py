@@ -49,9 +49,9 @@ class AudioSegmentDataset(Dataset):
             label = 1
         if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
-        #mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
-        mel_specto = self.compute_melspectogram_features(audio_data)
-        padded_audio = self.pad_mfcc(mel_specto, self.target_length)
+        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
+        #mel_specto = self.compute_melspectogram_features(audio_data)
+        padded_audio = self.pad_mfcc(mfcc, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
@@ -61,7 +61,7 @@ class AudioSegmentDataset(Dataset):
 
         return audio_tensor, label
 
-    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=12, n_mels=22, frame_size=25.6e-3, hop_size=10e-3, n_fft=2048):
+    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=128, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
         try:
             # Convert frame and hop size from seconds to samples
             frame_length = int(frame_size * sample_rate)
@@ -72,14 +72,14 @@ class AudioSegmentDataset(Dataset):
                                         n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
             
             # Compute the first-order difference (Delta MFCCs) using a 5-frame window
-            mfcc_delta = librosa.feature.delta(mfccs, width=5)
+            #mfcc_delta = librosa.feature.delta(mfccs, width=5)
             
             # Compute the second-order difference (Delta-Delta MFCCs)
             #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
             
             # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
-            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
-            return mfcc_features
+            #mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
+            return mfccs
         except:
             print("ERROR: ",np.shape(signal), signal.size)
 
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     #visualize_augmentations(words_segments[1].audio_data, words_segments[1].sample_rate)
     #print(np.shape(words_segments))
     # target_length = int(1.2*11811)    
-    target_length_24kHz_MFCC = int(150)
+    target_length_24kHz_MFCC = int(256)
     audio_dataset = AudioSegmentDataset(words_segments, target_length_24kHz_MFCC, augment=False)
     mfcc_tensor, label = audio_dataset[507]  # Fetch the first sample
     print(f"Label: {'Sigmatism' if label == 1 else 'Normal'}")

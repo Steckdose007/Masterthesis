@@ -557,7 +557,7 @@ if __name__ == "__main__":
     sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,None)
     print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
     #plotting.plot_mel_spectrogram(normal)
-    plotting.plot_mfcc_and_mel_spectrogram(normal)
+    plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
     #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
 

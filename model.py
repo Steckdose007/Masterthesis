@@ -58,10 +58,12 @@ class CNNMFCC(nn.Module):
         elif(kernel_size==(15, 15)):
             padding=(7,7)
 
-        # Convolutional Layers
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=kernel_size, stride=(1, 1), padding=padding)
+        self.bn1 = nn.BatchNorm2d(32)  # Batch Normalization after first conv
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=kernel_size, stride=(1, 1), padding=padding)
+        self.bn2 = nn.BatchNorm2d(64)  # Batch Normalization after second conv
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=kernel_size, stride=(1, 1), padding=padding)
+        self.bn3 = nn.BatchNorm2d(128)  # Batch Normalization after third conv
 
         # Pooling Layers
         self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
@@ -75,13 +77,13 @@ class CNNMFCC(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
 
         # Activation
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU(0.01)
 
     def forward(self, x):
         # Convolutional layers with ReLU and pooling
-        x = self.pool(self.relu(self.conv1(x)))  # Shape: (batch, 32, n_mfcc//2, time_frames//2)
-        x = self.pool(self.relu(self.conv2(x)))  # Shape: (batch, 64, n_mfcc//4, time_frames//4)
-        x = self.pool(self.relu(self.conv3(x)))  # Shape: (batch, 128, n_mfcc//8, time_frames//8)
+        x = self.pool(self.relu(self.bn1(self.conv1(x))))  # Shape: (batch, 32, n_mfcc//2, time_frames//2)
+        x = self.pool(self.relu(self.bn2(self.conv2(x))))  # Shape: (batch, 64, n_mfcc//4, time_frames//4)
+        x = self.pool(self.relu(self.bn3(self.conv3(x))))  # Shape: (batch, 128, n_mfcc//8, time_frames//8)
         x = self.dropout(x)
         # Flatten for fully connected layers
         x = x.view(x.size(0), -1)
