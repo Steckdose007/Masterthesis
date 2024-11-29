@@ -2,16 +2,21 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D , CNNMFCC
+from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset  
 from sklearn.model_selection import train_test_split
+from torch.nn import functional as F
 import datetime
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  
 from collections import defaultdict
+import librosa
+from torch.nn.functional import interpolate
+from torchsummary import summary
+import cv2
 
 def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
@@ -141,6 +146,139 @@ def split_list_after_speaker(words_segments):
         segments_test.extend(speaker_to_segments[speaker])
     return segments_train, segments_test
 
+def grad_cam_heatmap(model, input_tensor, target_class):
+    """
+    Generates a Grad-CAM heatmap for the given input and target class.
+    """
+    # Ensure input tensor has the right dimensions
+    if input_tensor.dim() == 3:
+        input_tensor = input_tensor.unsqueeze(0)  # Add batch dimension
+
+    input_tensor = input_tensor.to(next(model.parameters()).device)  # Move to the correct device
+    model.eval()
+    
+    # Identify the last convolutional layer for Grad-CAM
+    target_layer = model.features[-1]  # Use the last layer of features
+    
+    gradients = []
+    activations = []
+
+    # Register hooks to capture gradients and activations
+    def backward_hook(module, grad_input, grad_output):
+        gradients.append(grad_output[0])
+        return None
+
+    def forward_hook(module, input, output):
+        activations.append(output)
+        return None
+
+    target_layer.register_forward_hook(forward_hook)
+    target_layer.register_backward_hook(backward_hook)
+    # Forward pass
+    output = model(input_tensor)
+    loss = output[:, target_class].sum()  # Target class activation
+
+    # Backward pass to compute gradients
+    model.zero_grad()
+    loss.backward()
+
+    # Extract the gradients and activations
+    gradients = gradients[0].detach()
+    activations = activations[0].detach()
+
+    # Compute the weights for Grad-CAM
+    weights = torch.mean(torch.mean(gradients, dim=2), dim=2)
+    weights = weights.reshape(weights.shape[1], 1, 1)
+    activationMap = torch.squeeze(activations[0])
+
+    # ReLU on the heatmap to remove negative values
+    gradcam = F.relu((weights*activationMap).sum(0))
+    gradcam = cv2.resize(gradcam.data.cpu().numpy(), (224,224))
+    
+    return gradcam
+
+def overlay_heatmap_with_input(input_tensor, heatmap, alpha=0.2):
+    """
+    Overlay the Grad-CAM heatmap onto the input tensor (e.g., mel-spectrogram).
+    
+    Parameters:
+    - input_tensor: The original input (e.g., mel-spectrogram), shape (n_mfcc, time_frames)
+    - heatmap: The Grad-CAM heatmap, shape (n_mfcc, time_frames)
+    - alpha: Transparency of the overlay (0: fully input, 1: fully heatmap)
+    """
+
+    if isinstance(input_tensor, torch.Tensor):
+        input_tensor = input_tensor.cpu().numpy()
+    heatmap = heatmap.squeeze()
+    input_tensor = input_tensor.squeeze()
+    print(np.shape(heatmap))
+    print(np.shape(input_tensor))
+
+    # Normalize the input tensor to [0, 1] for visualization
+    input_tensor = input_tensor - np.min(input_tensor)
+    input_tensor /= np.max(input_tensor) if np.max(input_tensor) != 0 else 1
+
+    # Create the overlay
+    overlay = alpha * heatmap + (1 - alpha) * input_tensor
+
+    # Plot the overlay
+    plt.figure(figsize=(12, 6))
+    plt.imshow(overlay, aspect='auto', origin='lower', cmap='jet')
+    plt.colorbar(label='Heatmap Intensity')
+    plt.title("Overlay of Heatmap and Input Tensor")
+    plt.xlabel("Time Frames")
+    plt.ylabel("MFCC Coefficients")
+    plt.grid(False)
+    plt.show()
+
+def overlay_heatmap_on_mel_spectrogram(signal, sample_rate, model, input_tensor, target_class):
+    """
+    Generate a Mel-spectrogram and overlay Grad-CAM heatmap.
+
+    Args:
+    - signal: Audio signal.
+    - sample_rate: Sample rate of the signal.
+    - model: Trained PyTorch model.
+    - input_tensor: Input tensor of shape [1, 1, n_mfcc, time_frames].
+    - target_class: Target class index.
+
+    Returns:
+    - None (plots the visualization).
+    """
+    # Generate Grad-CAM heatmap
+    heatmap = grad_cam_heatmap(model, input_tensor, target_class)
+    overlay_heatmap_with_input(input_tensor,heatmap)
+    # Rescale heatmap to Mel-spectrogram dimensions
+    frame_length = int(25.6e-3 * sample_rate)
+    hop_length = int(5e-3 * sample_rate) 
+    mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=128,n_fft=2048,hop_length=hop_length,
+                                                     win_length=frame_length)
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    
+    # Create the overlay
+    overlay = 0.2 * heatmap + (1 - 0.2) * mel_spectrogram_db
+
+    # Plot the overlay
+    plt.figure(figsize=(12, 6))
+    plt.imshow(overlay, aspect='auto', origin='lower', cmap='jet')
+    plt.colorbar(label='Heatmap Intensity')
+    plt.title("Overlay of Heatmap and Input Tensor")
+    plt.xlabel("Time Frames")
+    plt.ylabel("MFCC Coefficients")
+    plt.grid(False)
+    plt.show()
+
+def explain_model(dataset):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    path = "models/Mobilenet_20241129-170942.pth"
+    model = initialize_mobilenet(num_classes, 1)
+    model.load_state_dict(torch.load(path, weights_only=True))
+    #model.to(device)
+    #summary(model, input_size=(1, 224, 224))
+    input_tensor , target_class,signal = dataset[507]
+    overlay_heatmap_on_mel_spectrogram(signal, 24000, model, input_tensor, target_class)
+
+
 if __name__ == "__main__":
     # Load your dataset
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
@@ -165,18 +303,30 @@ if __name__ == "__main__":
     learning_rate = 0.0001
     num_epochs = 15
     batch_size = 16
-    # Create dataset 
-    segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, target_length, augment = True)
 
+    mfcc_dim={
+        "n_mfcc":112, 
+        "n_mels":128, 
+        "frame_size":0.025, 
+        "hop_size":0.005, 
+        "n_fft":2048,
+        "target_length": 224
+    }
+    # Create dataset 
+    segments_test = AudioSegmentDataset(segments_test, mfcc_dim, augment= False)
+    segments_train = AudioSegmentDataset(segments_train, mfcc_dim, augment = True)
+    explain_model(segments_test)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
 
 
-    # Initialize model, loss function, and optimizer
+    """# Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
-    model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
+    num_classes = 2  # Change as needed
+    input_channels = 1  # Since your input is grayscale spectrogram
+    model = initialize_mobilenet(num_classes, input_channels).to(device)
+    #model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
@@ -184,6 +334,7 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"best_cnn2D_lowResMFCC_{timestamp}.pth"
+    best_model_filename = f"Mobilenet_{timestamp}.pth"
     
     train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)
+"""

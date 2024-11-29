@@ -26,7 +26,7 @@ class AudioSegment:
     path: str
 
 class AudioSegmentDataset(Dataset):
-    def __init__(self, audio_segments: List[AudioSegment], target_length: int, augment: bool):
+    def __init__(self, audio_segments: List[AudioSegment], mfcc_dict : dict, augment: bool):
         """
         Custom dataset for audio segments, prepares them for use in the CNN model.
         
@@ -36,7 +36,8 @@ class AudioSegmentDataset(Dataset):
         """
         self.augment = augment
         self.audio_segments = audio_segments
-        self.target_length = target_length
+        self.target_length = mfcc_dict["target_length"]
+        self.mfcc_dict = mfcc_dict
 
     def __len__(self):
         return len(self.audio_segments)
@@ -49,7 +50,8 @@ class AudioSegmentDataset(Dataset):
             label = 1
         if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
-        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate)
+        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
+                                           frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         #mel_specto = self.compute_melspectogram_features(audio_data)
         padded_audio = self.pad_mfcc(mfcc, self.target_length)
         
@@ -59,7 +61,7 @@ class AudioSegmentDataset(Dataset):
         # which is why we add this extra dimension.
         audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
 
-        return audio_tensor, label
+        return audio_tensor, label,segment.audio_data
 
     def compute_mfcc_features(self,signal, sample_rate, n_mfcc=128, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
         try:
@@ -72,14 +74,14 @@ class AudioSegmentDataset(Dataset):
                                         n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
             
             # Compute the first-order difference (Delta MFCCs) using a 5-frame window
-            #mfcc_delta = librosa.feature.delta(mfccs, width=5)
+            mfcc_delta = librosa.feature.delta(mfccs, width=5)
             
             # Compute the second-order difference (Delta-Delta MFCCs)
             #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
             
             # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
-            #mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
-            return mfccs
+            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
+            return mfcc_features
         except:
             print("ERROR: ",np.shape(signal), signal.size)
 
