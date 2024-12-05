@@ -25,7 +25,7 @@ class AudioSegment:
     label_path: str
     path: str
 
-class AudioSegmentDataset(Dataset):
+class GradcamDataset(Dataset):
     def __init__(self, audio_segments: List[AudioSegment], mfcc_dict : dict, augment: bool):
         """
         Custom dataset for audio segments, prepares them for use in the CNN model.
@@ -51,22 +51,26 @@ class AudioSegmentDataset(Dataset):
         if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
         mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
-                                           frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
+                        frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
+        #self.plot_histograms(mfcc)
         normalized_mfcc = self.normalize_mfcc(mfcc)
-        #mel_specto = self.compute_melspectogram_features(audio_data,segment.sample_rate, n_mels=self.mfcc_dict["n_mels"],
-                                           #frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
+        #self.plot_histograms(normalized_mfcc)
+        mel_specto = self.compute_melspectogram_features(audio_data,segment.sample_rate, n_mels=self.mfcc_dict["n_mels"],
+                        frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         
-        
-        padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
+        padding_mel,mel_audio = self.pad_mfcc(mel_specto, self.target_length)
+        padding, padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
         # However, CNNs expect the input to have a channel dimension, 
         # which is why we add this extra dimension.
         audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
-
+        mel_tensor = torch.tensor(mel_audio, dtype=torch.float32).unsqueeze(0)
+        print(segment.label)#e.g Sonne
+        print("MFCC size: ",padded_audio.shape)
         
-        return audio_tensor, label
+        return audio_tensor, label,segment.label, segment.audio_data, padding, mel_tensor,padding_mel
 
     def compute_mfcc_features(self,signal, sample_rate, n_mfcc=128, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
         try:
@@ -149,7 +153,7 @@ class AudioSegmentDataset(Dataset):
             )
 
         # Truncate if larger
-        return mfcc[:target_n_mfcc, :target_time_frames]
+        return (paddingY,paddingX),mfcc[:target_n_mfcc, :target_time_frames]
         
     def plot_histograms(self,mfcc):
         """

@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset , plot_mfcc
+from Dataloader_gradcam import GradcamDataset , plot_mfcc
 from sklearn.model_selection import train_test_split
 import datetime
 import os
@@ -15,6 +15,27 @@ from collections import defaultdict
 import librosa
 from torch.nn.functional import interpolate
 from torchsummary import summary
+
+def normalize_image(image):
+    """
+    Normalize an image so that its values are between 0 and 1.
+
+    Parameters:
+    - image: The input image as a 2D or 3D numpy array.
+
+    Returns:
+    - Normalized image with values in the range [0, 1].
+    """
+    min_val = np.min(image)
+    max_val = np.max(image)
+    
+    # Avoid division by zero if the image is constant
+    if max_val - min_val == 0:
+        return np.zeros_like(image)
+    
+    normalized_image = (image - min_val) / (max_val - min_val)
+    return normalized_image
+
 
 def split_list_after_speaker(words_segments):
     # Group word segments by speaker
@@ -97,7 +118,7 @@ def grad_cam_heatmap(model, input_tensor, target_class):
                                 align_corners=False).squeeze().numpy()
     return cam_resized
 
-def overlay_heatmap_with_input(input_tensor, heatmap, alpha=0.4):
+def overlay_heatmap_with_input(input_tensor, heatmap, padding, mel_tensor,padding_mel ,alpha=0.4):
     """
     Overlay the Grad-CAM heatmap onto the input tensor (e.g., mel-spectrogram).
     
@@ -109,84 +130,98 @@ def overlay_heatmap_with_input(input_tensor, heatmap, alpha=0.4):
 
     if isinstance(input_tensor, torch.Tensor):
         input_tensor = input_tensor.cpu().numpy()
+    if isinstance(mel_tensor, torch.Tensor):
+        mel_tensor = mel_tensor.cpu().numpy()
     heatmap = heatmap.squeeze()
     input_tensor = input_tensor.squeeze()
+    mel_tensor = mel_tensor.squeeze()
+
     print(np.shape(heatmap))
     print(np.shape(input_tensor))
+    print(np.shape(mel_tensor))
+
+    heatmap = heatmap[:224-padding[0],:224-padding[1]]
+    input_tensor = input_tensor[:224-padding[0],:224-padding[1]]
+    mel_tensor = mel_tensor[:224-padding_mel[0],:224-padding_mel[1]]
+
+    print(np.shape(heatmap))
+    print(np.shape(input_tensor))
+    print(np.shape(mel_tensor))
 
     # Normalize the input tensor to [0, 1] for visualization
-    input_tensor = input_tensor - np.min(input_tensor)
-    input_tensor /= np.max(input_tensor) if np.max(input_tensor) != 0 else 1
+    input_tensor = normalize_image(input_tensor)
+    heatmap = normalize_image(heatmap)
+    mel_tensor=normalize_image(mel_tensor)
 
     # Create the overlay
     overlay = alpha * heatmap + (1 - alpha) * input_tensor
 
-    # Plot the overlay
-    plt.figure(figsize=(12, 6))
-    plt.imshow(overlay, aspect='auto', origin='lower', cmap='viridis')
-    plt.colorbar(label='Heatmap Intensity')
-    plt.title("Overlay of Heatmap and Input Tensor")
-    plt.xlabel("Time Frames")
-    plt.ylabel("MFCC Coefficients")
-    plt.grid(False)
-    plt.show()
-    # Plot the overlay
-    plt.figure(figsize=(12, 6))
-    plt.imshow(heatmap, aspect='auto', origin='lower', cmap='viridis')
-    plt.colorbar(label='Heatmap Intensity')
-    plt.title("heatmap")
-    plt.xlabel("Time Frames")
-    plt.ylabel("MFCC Coefficients")
-    plt.grid(False)
-    plt.show()
-
-def overlay_heatmap_on_mel_spectrogram(signal, sample_rate, model, input_tensor, target_class):
-    """
-    Generate a Mel-spectrogram and overlay Grad-CAM heatmap.
-
-    Args:
-    - signal: Audio signal.
-    - sample_rate: Sample rate of the signal.
-    - model: Trained PyTorch model.
-    - input_tensor: Input tensor of shape [1, 1, n_mfcc, time_frames].
-    - target_class: Target class index.
-
-    Returns:
-    - None (plots the visualization).
-    """
-    # Generate Grad-CAM heatmap
-    heatmap = grad_cam_heatmap(model, input_tensor, target_class)
-    overlay_heatmap_with_input(input_tensor,heatmap)
-    # Rescale heatmap to Mel-spectrogram dimensions
-    frame_length = int(0.025 * sample_rate)
-    hop_length = int(0.005 * sample_rate) 
-    mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=128,n_fft=2048,hop_length=hop_length,
-                                                     win_length=frame_length)
-    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    fig, axs = plt.subplots(2, 2, figsize=(16, 12))
     
-    # Create the overlay
-    overlay = 0.2 * heatmap + (1 - 0.2) * mel_spectrogram_db
+    # Plot Input Tensor
+    axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='coolwarm')
+    axs[0, 0].set_title("Input Tensor")
+    axs[0, 0].set_xlabel("Time Frames")
+    axs[0, 0].set_ylabel("MFCC Coefficients")
+    axs[0, 0].grid(False)
+    axs[0, 0].colorbar = plt.colorbar(axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='coolwarm'),
+                                       ax=axs[0, 0], format='%+2.0f')
+    
+    # Plot Overlay
+    axs[0, 1].imshow(overlay, aspect='auto', origin='lower', cmap='plasma')
+    axs[0, 1].set_title("Overlay of Heatmap and Input Tensor")
+    axs[0, 1].set_xlabel("Time Frames")
+    axs[0, 1].set_ylabel("MFCC Coefficients")
+    axs[0, 1].grid(False)
+    axs[0, 1].colorbar = plt.colorbar(axs[0, 1].imshow(overlay, aspect='auto', origin='lower', cmap='plasma'),
+                                       ax=axs[0, 1], format='%+2.0f')
+    
+    # Plot Heatmap
+    axs[1, 0].imshow(heatmap, aspect='auto', origin='lower', cmap='plasma')
+    axs[1, 0].set_title("Heatmap")
+    axs[1, 0].set_xlabel("Time Frames")
+    axs[1, 0].set_ylabel("MFCC Coefficients")
+    axs[1, 0].grid(False)
+    axs[1, 0].colorbar = plt.colorbar(axs[1, 0].imshow(heatmap, aspect='auto', origin='lower', cmap='plasma'),
+                                       ax=axs[1, 0], format='%+2.0f')
 
-    # Plot the overlay
-    plt.figure(figsize=(12, 6))
-    plt.imshow(overlay, aspect='auto', origin='lower', cmap='jet')
-    plt.colorbar(label='Heatmap Intensity')
-    plt.title("Overlay of Heatmap and Input Tensor")
-    plt.xlabel("Time Frames")
-    plt.ylabel("MFCC Coefficients")
-    plt.grid(False)
+    # Plot Mel Spectrogram
+    axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='coolwarm')
+    axs[1, 1].set_title("Mel Spectrogram")
+    axs[1, 1].set_xlabel("Time Frames")
+    axs[1, 1].set_ylabel("Mel Frequency (Hz)")
+    axs[1, 1].grid(False)
+    axs[1, 1].colorbar = plt.colorbar(axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='coolwarm'),
+                                       ax=axs[1, 1], format='%+2.0f dB')
+    
+    # Adjust layout for better spacing
+    plt.tight_layout()
     plt.show()
+
 
 def explain_model(dataset):
     #path = "models/Mobilenet_20241129-170942.pth"
-    path = "models/Mobilenet_20241204-080257.pth"
+    path = "models/Mobilenet_othernormalization_20241205-082953.pth"
     model = initialize_mobilenet(num_classes=2, input_channels=1)
     model.load_state_dict(torch.load(path, weights_only=True))
     #model.to(device)
     #summary(model, input_size=(1, 224, 224))
-    input_tensor , target_class,signal = dataset[229]#select mfcc
-    plot_mfcc(input_tensor)
-    overlay_heatmap_on_mel_spectrogram(signal, 24000, model, input_tensor, target_class)
+    input_tensor , target_class,word_spoken,signal,padding, mel_tensor,padding_mel = find_spezific_word(dataset,"Niesen",0)
+    heatmap = grad_cam_heatmap(model, input_tensor, target_class)
+    overlay_heatmap_with_input(input_tensor,heatmap,padding, mel_tensor,padding_mel)
+    input_tensor , target_class,word_spoken,signal,padding, mel_tensor,padding_mel = dataset[232]#select mfcc
+    #plot_mfcc(input_tensor)
+    heatmap = grad_cam_heatmap(model, input_tensor, target_class)
+    overlay_heatmap_with_input(input_tensor,heatmap,padding, mel_tensor,padding_mel)
+
+def find_spezific_word(dataset, word, label):
+    for i in range(len(dataset)):
+        input_tensor , target_class,word_spoken,signal,padding, mel_tensor,padding_mel = dataset[i+40]
+        if(word_spoken == word and label == target_class):
+            return input_tensor , target_class,word_spoken,signal,padding, mel_tensor,padding_mel
+    print("No word Found.....................................!")
+    return None
+
 
 
 if __name__ == "__main__":
@@ -207,7 +242,7 @@ if __name__ == "__main__":
         "target_length": 224
     }
     # Create dataset 
-    segments_test = AudioSegmentDataset(segments_test, mfcc_dim, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, mfcc_dim, augment = True)
+    segments_test = GradcamDataset(segments_test, mfcc_dim, augment= False)
+    segments_train = GradcamDataset(segments_train, mfcc_dim, augment = True)
     explain_model(segments_test)
     
