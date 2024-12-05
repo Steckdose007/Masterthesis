@@ -12,19 +12,37 @@ from tqdm import tqdm
 # Global dataset variable
 global segments_train, segments_test
 # Load the dataset once
+def split_list_after_speaker(words_segments):
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        speaker = os.path.basename(segment.path).replace('_sig', '')
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.20)
+    
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    print(f"Number of speakers in train: {len(speakers_train)}, test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+    return segments_train, segments_test
+
 def prepare_dataset():
     global segments_train, segments_test
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
-    # Load preprocessed audio segments from a pickle file
-    words_segments = loader.load_segments_from_pickle("MFCC__24kHz.pkl")
-    # Set target length for padding/truncation
-    target_length = int(148) 
+    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    segments_train, segments_test = split_list_after_speaker(words_segments)
+    print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
     
-    # Create dataset  
-    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.50)
-    segments_train, segments_test = train_test_split(segments_test, random_state=42,test_size=0.20)#small subset
-    segments_test = AudioSegmentDataset(segments_test, target_length, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, target_length,augment = True)
     return segments_train,segments_test
 
 # Define objective function for Optuna
@@ -32,8 +50,7 @@ def objective(trial):
     global segments_train, segments_test
 
     # Define search space
-    learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)  # Use log=True for logarithmic scale
-    dropout_rate = trial.suggest_float('dropout_rate', 0.2, 0.5)
+    n_mfcc = trial.suggest_float('n_mfcc', 60, 1e-2, log=True)  # Use log=True for logarithmic scale
     batch_size = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
     kernel_size = trial.suggest_categorical('kernel_size', [(3, 3), (5,5), (11,11), (15,15)])
     gamma = trial.suggest_float("gamma", 0.5, 0.99)
@@ -41,6 +58,17 @@ def objective(trial):
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    mfcc_dim={
+        "n_mfcc":n_mfcc, 
+        "n_mels":128, 
+        "frame_size":0.025, 
+        "hop_size":0.005, 
+        "n_fft":2048,
+        "target_length": 224
+    }
+    # Create dataset 
+    segments_test = AudioSegmentDataset(segments_test, mfcc_dim, augment= False)
+    segments_train = AudioSegmentDataset(segments_train, mfcc_dim, augment = True)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
    
