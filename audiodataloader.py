@@ -397,7 +397,7 @@ def find_pairs(audio_segments,phones_segments):
     phones =["z","s","Z","S","ts"]
     phones_list_normal = []
     phones_list_sigmatism = []
-    segment = audio_segments[20]###choose word here
+    segment = audio_segments[2]###choose word here
     
     if segment.label_path == "sigmatism":
         print("It is Sigmatism")

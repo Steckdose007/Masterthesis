@@ -35,8 +35,23 @@ def plot_mel_spectrogram(word, phones=None):
     axs[0].set_xlabel("Time (samples)")
     axs[0].set_ylabel("Amplitude")
     axs[0].grid()
+    
+    """Approach 2 see twist"""
+    # # Normalize word length into equal parts
+    # num_chars = len(word.label)
+    # signal_per_char = signal.shape[0] // num_chars
+    # phone_chars=['s','S','Z', 'z','X', 'x']
+    # # Find positions of the phone characters in the word
+    # phone_positions = [i for i, char in enumerate(word.label) if char in phone_chars]
+    # for position in phone_positions:
+    #     char_start_signal = position * signal_per_char
+    #     char_end_signal = (position + 1) * signal_per_char
+    #     axs[0].axvline(x=char_start_signal, color='green', linestyle='--', label='Phone Start')
+    #     axs[0].axvline(x=char_end_signal, color='red', linestyle='--', label='Phone End')
 
-    # Plot phone boundaries on the waveform
+    
+    """APProach 1 see twist"""    
+    #Plot phone boundaries on the waveform
     if phones:
         for p in phones:
             # Adjust phone start and end times relative to the word start
@@ -60,13 +75,28 @@ def plot_mel_spectrogram(word, phones=None):
     axs[1].set_title(f"MFCC for {word.label} {word.label_path}")
     axs[1].set_xlabel("Frames")
     axs[1].set_ylabel("Coefficients")
+    
+    """Approach 2 see twist"""
+    # # Normalize word length into equal parts
+    # num_chars = len(word.label)
+    # frames_per_char = mfccs.shape[1] // num_chars
+    # phone_chars=['s','S','Z', 'z','X', 'x']
+    # # Find positions of the phone characters in the word
+    # phone_positions = [i for i, char in enumerate(word.label) if char in phone_chars]
+    # for position in phone_positions:
+    #     char_start_frame = position * frames_per_char
+    #     char_end_frame = (position + 1) * frames_per_char
+    #     axs[1].axvline(x=char_start_frame, color='green', linestyle='--', label='Phone Start')
+    #     axs[1].axvline(x=char_end_frame, color='red', linestyle='--', label='Phone End')
+
+    """APProach 1 see twist"""    
     hop_length = int(0.005 * sample_rate)
-    # Plot phone boundaries on the spectrogram
+    #Plot phone boundaries on the spectrogram
     if phones:
         for p in phones:
             # Adjust phone start and end times relative to the word start (in seconds)
-            frame_start = int(((p.start_time - word.start_time)*scaling) / hop_length)
-            frame_end = int(((p.end_time - word.start_time)*scaling) / hop_length)
+            frame_start = abs(int(((p.start_time - word.start_time)*scaling) / hop_length))
+            frame_end = abs(int(((p.end_time - word.start_time)*scaling) / hop_length))
             print("start: ",frame_start)
             print("end: ",frame_end)
             # Plot vertical lines for phone start and end times

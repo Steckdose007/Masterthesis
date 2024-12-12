@@ -197,7 +197,42 @@ class AudioSegmentDataset(Dataset):
                     phones_list.append(phone)
         return  phones_list
 
-        
+    def extract_mfcc_based_on_phone_location(mfcc, word_label, word_length_frames, phone_chars=['s','S','Z', 'z','X', 'x'], target_size=(224, 224)):
+        """
+        Extracts the relevant portion of the MFCC based on the location of specific phones
+        (e.g., 's', 'z', 'x') in the word and resizes it to the target size.
+
+        Parameters:
+        - mfcc: np.ndarray, the original MFCC with shape (n_mfcc, time_frames).
+        - word_label: str, the spoken word label (e.g., 'Wissen', 'Samen').
+        - word_length_frames: int, the total number of frames in the MFCC.
+        - phone_chars: list, list of important phone characters to focus on (default: ['s', 'z', 'x']).
+        - target_size: tuple, the desired size to resize the extracted portion (default: (224, 224)).
+
+        Returns:
+        - resized_mfcc: np.ndarray, the resized MFCC with shape target_size.
+        """
+        # Normalize word length into equal parts
+        num_chars = len(word_label)
+        frames_per_char = word_length_frames // num_chars
+
+        # Find positions of the phone characters in the word
+        phone_positions = [i for i, char in enumerate(word_label) if char in phone_chars]
+
+        relevant_frames = []
+        for position in phone_positions:
+            char_start_frame = position * frames_per_char
+            char_end_frame = (position + 1) * frames_per_char
+            relevant_frames.extend(range(char_start_frame, char_end_frame))  # Add all frames for each phone
+
+        # Extract the relevant portion of the MFCC
+        relevant_frames = sorted(relevant_frames)  # Ensure frame indices are in order
+        extracted_mfcc = mfcc[:, relevant_frames]
+
+        # Resize the extracted MFCC to the target size
+        resized_mfcc = cv2.resize(extracted_mfcc, target_size, interpolation=cv2.INTER_LINEAR)
+
+        return resized_mfcc     
 
 
 if __name__ == "__main__":
