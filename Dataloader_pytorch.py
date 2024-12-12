@@ -50,6 +50,7 @@ class AudioSegmentDataset(Dataset):
             label = 1
         if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
+            
         mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
                                            frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         normalized_mfcc = self.normalize_mfcc(mfcc)

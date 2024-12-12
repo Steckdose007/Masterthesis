@@ -60,7 +60,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
         train_losses.append(epoch_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Train Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}")
         # Step the scheduler
-        scheduler.step()
+        #scheduler.step()
         # Evaluate on the test set
         test_loss, test_acc = evaluate_model(model, test_loader, criterion)
         if test_acc > best_test_acc:
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     # Hyperparameters
     n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
-    learning_rate = 0.0001
+    learning_rate = 0.00001
     num_epochs = 100
     batch_size = 16
 
@@ -196,9 +196,9 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     best_model_filename = f"Mobilenet_100epoch_melspectogram_{timestamp}.pth"
     
-    train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    train_model(model, train_loader, test_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)

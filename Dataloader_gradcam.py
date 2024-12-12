@@ -327,7 +327,7 @@ if __name__ == "__main__":
     #print(np.shape(words_segments))
     # target_length = int(1.2*11811)    
     target_length_24kHz_MFCC = int(256)
-    audio_dataset = AudioSegmentDataset(words_segments, target_length_24kHz_MFCC, augment=False)
+    audio_dataset = GradcamDataset(words_segments, target_length_24kHz_MFCC, augment=False)
     mfcc_tensor, label = audio_dataset[507]  # Fetch the first sample
     print(f"Label: {'Sigmatism' if label == 1 else 'Normal'}")
     print(mfcc_tensor.shape)
