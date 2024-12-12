@@ -68,7 +68,7 @@ class GradcamDataset(Dataset):
         audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
         mel_tensor = torch.tensor(mel_audio, dtype=torch.float32).unsqueeze(0)
         print(segment.label)#e.g Sonne
-        print("MFCC size: ",padded_audio.shape)
+        #print("MFCC size: ",padded_audio.shape)
         
         return audio_tensor, label,segment.label, segment.audio_data, padding, mel_tensor,padding_mel
 

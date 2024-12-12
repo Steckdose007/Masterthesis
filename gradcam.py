@@ -159,12 +159,12 @@ def overlay_heatmap_with_input(input_tensor, heatmap, padding, mel_tensor,paddin
     fig, axs = plt.subplots(2, 2, figsize=(16, 12))
     
     # Plot Input Tensor
-    axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='coolwarm')
+    axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='plasma')
     axs[0, 0].set_title("Input Tensor")
     axs[0, 0].set_xlabel("Time Frames")
     axs[0, 0].set_ylabel("MFCC Coefficients")
     axs[0, 0].grid(False)
-    axs[0, 0].colorbar = plt.colorbar(axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='coolwarm'),
+    axs[0, 0].colorbar = plt.colorbar(axs[0, 0].imshow(input_tensor, aspect='auto', origin='lower', cmap='plasma'),
                                        ax=axs[0, 0], format='%+2.0f')
     
     # Plot Overlay
@@ -186,12 +186,12 @@ def overlay_heatmap_with_input(input_tensor, heatmap, padding, mel_tensor,paddin
                                        ax=axs[1, 0], format='%+2.0f')
 
     # Plot Mel Spectrogram
-    axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='coolwarm')
+    axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='plasma')
     axs[1, 1].set_title("Mel Spectrogram")
     axs[1, 1].set_xlabel("Time Frames")
     axs[1, 1].set_ylabel("Mel Frequency (Hz)")
     axs[1, 1].grid(False)
-    axs[1, 1].colorbar = plt.colorbar(axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='coolwarm'),
+    axs[1, 1].colorbar = plt.colorbar(axs[1, 1].imshow(mel_tensor, aspect='auto', origin='lower', cmap='plasma'),
                                        ax=axs[1, 1], format='%+2.0f dB')
     
     # Adjust layout for better spacing
@@ -203,7 +203,7 @@ def explain_model(dataset):
     #path = "models/Mobilenet_20241129-170942.pth"
     path = "models/Mobilenet_othernormalization_20241205-082953.pth"
     model = initialize_mobilenet(num_classes=2, input_channels=1)
-    model.load_state_dict(torch.load(path, weights_only=True))
+    model.load_state_dict(torch.load(path, weights_only=True,map_location=torch.device('cpu')))
     #model.to(device)
     #summary(model, input_size=(1, 224, 224))
     input_tensor , target_class,word_spoken,signal,padding, mel_tensor,padding_mel = find_spezific_word(dataset,"Niesen",0)
