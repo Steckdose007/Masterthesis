@@ -14,6 +14,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from audiodataloader import AudioDataLoader, AudioSegment
 import random
+import cv2
+import os
 from data_augmentation import apply_augmentation
 @dataclass
 class AudioSegment:
@@ -26,7 +28,7 @@ class AudioSegment:
     path: str
 
 class AudioSegmentDataset(Dataset):
-    def __init__(self, audio_segments: List[AudioSegment], mfcc_dict : dict, augment: bool):
+    def __init__(self, audio_segments: List[AudioSegment],phones_segments:List[AudioSegment], mfcc_dict : dict, augment: bool):
         """
         Custom dataset for audio segments, prepares them for use in the CNN model.
         
@@ -35,6 +37,7 @@ class AudioSegmentDataset(Dataset):
         - target_length: The fixed length for padding/truncation.
         """
         self.augment = augment
+        self.phones = phones_segments
         self.audio_segments = audio_segments
         self.target_length = mfcc_dict["target_length"]
         self.mfcc_dict = mfcc_dict
@@ -44,6 +47,17 @@ class AudioSegmentDataset(Dataset):
 
     def __getitem__(self, idx):
         segment = self.audio_segments[idx]
+        phones = self.find_pairs(segment)
+        hop_length = int(self.mfcc_dict["hop_size"] * segment.sample_rate)
+        scaling=24000/44100
+        frames_with_phone = []
+        #get frames in the mfcc in which the phone is.
+        for p in phones:
+            # Adjust phone start and end times relative to the word start (in seconds)
+            frame_start = int(((p.start_time - segment.start_time)*scaling) / hop_length)
+            frame_end = int(((p.end_time - segment.start_time)*scaling) / hop_length)
+            frames_with_phone.append((frame_start,frame_end))
+
         audio_data = segment.audio_data
         label = 0
         if(segment.label_path == "sigmatism"):
@@ -57,14 +71,14 @@ class AudioSegmentDataset(Dataset):
         #mel_specto = self.compute_melspectogram_features(audio_data,segment.sample_rate, n_mels=self.mfcc_dict["n_mels"],
                                            #frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         
-        
-        padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
+        resized_mfcc = self.extract_and_resize_mfcc(normalized_mfcc, frames_with_phone, target_size=(224, 224))
+        #padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
         # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
         # However, CNNs expect the input to have a channel dimension, 
         # which is why we add this extra dimension.
-        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
+        audio_tensor = torch.tensor(resized_mfcc, dtype=torch.float32).unsqueeze(0) 
 
         
         return audio_tensor, label
@@ -151,167 +165,40 @@ class AudioSegmentDataset(Dataset):
 
         # Truncate if larger
         return mfcc[:target_n_mfcc, :target_time_frames]
+
+    def extract_and_resize_mfcc(self,mfcc, frames_with_phone, target_size=(224, 224)):
         
-    def plot_histograms(self,mfcc):
-        """
-        To show the range of mfcc in order to analyse the 
+        # Extract only the frames with the phone
+        extracted_mfcc = []
+        for frame_start, frame_end in frames_with_phone:
+            extracted_mfcc.append(mfcc[:, frame_start:frame_end])  # Append the relevant frames
         
-        """
-        mfcc_values = mfcc.flatten()
-        plt.hist(mfcc_values, bins=100)
-        plt.title("Histogram of MFCC Values")
-        plt.xlabel(" MFCC Value")
-        plt.ylabel("Frequency")
-        plt.show()
-
-        # Create the boxplot
-        plt.figure(figsize=(8, 6))
-        plt.boxplot(mfcc_values, vert=False, patch_artist=True, boxprops=dict(facecolor='lightblue'))
-        plt.title("Boxplot of MFCC Values")
-        plt.xlabel("MFCC Value")
-        plt.grid(axis='x', linestyle='--', alpha=0.7)
-        plt.show()
-
-
-def visualize_augmentations(audio_data, sample_rate):
-    """
-    Visualize the effects of data augmentation on audio data.
-    
-    Parameters:
-    - audio_data: The original audio signal (numpy array).
-    - sample_rate: The sample rate of the audio signal.
-    """
-    # Define augmentations
-    def add_gaussian_noise(audio_data, noise_level=0.02):
-        noise = np.random.normal(0, noise_level, audio_data.shape)
-        return audio_data + noise
-
-    def time_stretch(audio_data, sample_rate, stretch_factor=1.2):
-        return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
-
-    def pitch_shift(audio_data, sample_rate, n_steps=2):
-        return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
-
-    def random_crop_pad(audio_data, target_length):
-        if len(audio_data) < target_length:
-            # Pad with zeros
-            return np.pad(audio_data, (0, target_length - len(audio_data)), mode='constant')
+        # Concatenate the extracted frames along the time axis
+        if len(extracted_mfcc) > 0:
+            extracted_mfcc = np.concatenate(extracted_mfcc, axis=1)
         else:
-            # Randomly crop
-            crop_start = np.random.randint(0, len(audio_data) - target_length)
-            return audio_data[crop_start:crop_start + target_length]
+            raise ValueError("No frames found for the specified phone.")
 
-    # Target length for cropping/padding
-    target_length = int(0.8 * len(audio_data))  # 80% of original length
+        # Resize the extracted MFCC to the target size
+        resized_mfcc = cv2.resize(extracted_mfcc, target_size, interpolation=cv2.INTER_LINEAR)
 
-    # Apply augmentations
-    augmentations = [
-        ("Original", audio_data),
-        ("Gaussian Noise", add_gaussian_noise(audio_data)),
-        ("Time Stretch (slower)", time_stretch(audio_data, sample_rate, stretch_factor=0.8)),
-        ("Pitch Shift (+2 semitones)", pitch_shift(audio_data, sample_rate, n_steps=2)),
-        ("Random Crop/Pad", random_crop_pad(audio_data, target_length))
-    ]
+        return resized_mfcc
 
-    # Plot the augmentations
-    plt.figure(figsize=(12, 8))
-    for i, (title, augmented_data) in enumerate(augmentations):
-        plt.subplot(len(augmentations), 1, i + 1)
-        plt.plot(augmented_data, alpha=0.7, label=title)
-        plt.title(title)
-        plt.xlabel("Sample Index")
-        plt.ylabel("Amplitude")
-        plt.legend(loc='upper right')
-        plt.grid()
+    def find_pairs(self,segment,phones_segments):
 
-    plt.tight_layout()
-    plt.show()
+        phones =["z","s","Z","S","ts"]
+        phones_list = []
+       
+        if(phones_segments):
+            for phone in phones_segments:
+                if (phone.label in phones and
+                    phone.path == segment.path and
+                    phone.sample_rate == segment.label):
+                    phones_list.append(phone)
+        return  phones_list
 
-def compute_average_spectrum_from_dataset(dataset, target_sample_rate=44100):
-
-    spectrums = []
-    i=0
-    for audio_tensor, _ in dataset:
-        # Remove the channel dimension and convert to numpy
-        audio = audio_tensor.squeeze(0).numpy()
-
-        # Compute the FFT
-        fft = np.fft.fft(audio)
-        fft_magnitude = np.abs(fft)  # Magnitude of FFT
         
-        # Frequency bins
-        sample_rate = target_sample_rate  # Ensure sample rate is consistent
-        frequencies = np.fft.fftfreq(len(fft), 1 / sample_rate)
-        
-        # Only take the positive frequencies
-        half_spectrum = len(fft_magnitude) // 2
-        fft_magnitude = fft_magnitude[:half_spectrum]
-        
-        spectrums.append(fft_magnitude)
-        i +=1
-        if(i>1000):
-            break
-    # Stack and compute the average spectrum
-    spectrums = np.array(spectrums)
-    average_spectrum = np.mean(spectrums, axis=0)
-    frequencies = frequencies[:half_spectrum]
-    plt.figure(figsize=(10, 6))
-    plt.plot(frequencies, average_spectrum, color='blue', label="Average Spectrum")
-    plt.title("Average Frequency Spectrum")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Magnitude")
-    plt.grid()
-    plt.legend()
-    plt.show()
 
-def plot_frequ_and_acc():
-    sampling_rates = [8000, 16000, 24000, 32000, 44100]
-    accuracies = [0.586, 0.586, 0.593, 0.587, 0.570]  # Replace with your actual accuracies
-    # Create a bar plot
-    plt.figure(figsize=(10, 6))
-    bars = plt.bar([str(rate) + " Hz" for rate in sampling_rates], accuracies, color='skyblue', edgecolor='black')
-
-    # Add accuracy values inside the bars
-    for bar, accuracy in zip(bars, accuracies):
-        plt.text(bar.get_x() + bar.get_width() / 2, 
-                bar.get_height() - 0.05,  # Slightly below the top of the bar
-                f"{accuracy:.3f}", 
-                ha='center', va='bottom', fontsize=12, color='black', weight='bold')
-
-    # Add labels and title
-    plt.title("Sampling Frequency vs. Accuracy", fontsize=16)
-    plt.xlabel("Sampling Frequency (Hz)", fontsize=14)
-    plt.ylabel("Accuracy", fontsize=14)
-    plt.ylim(0, 1)  # Adjust depending on your accuracy range
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-    # Show the plot
-    plt.tight_layout()
-    plt.show()
-
-def plot_mfcc(mfcc_tensor, sample_rate= 24000, title="MFCC"):
-
-    """
-    Plot the MFCC features as a heatmap.
-
-    Parameters:
-    - mfcc_tensor: The MFCC features (2D numpy array or PyTorch tensor).
-    - sample_rate: The sample rate of the audio.
-    - title: Title for the plot.
-    """
-    # Convert tensor to numpy array if necessary
-    if isinstance(mfcc_tensor, torch.Tensor):
-        mfcc_tensor = mfcc_tensor.squeeze().numpy()
-
-    #mfcc_tensor = (mfcc_tensor - np.mean(mfcc_tensor)) / np.std(mfcc_tensor)
-    # Create the plot
-    plt.figure(figsize=(12, 6))
-    plt.imshow(mfcc_tensor, aspect='auto', origin='lower', cmap='coolwarm')
-    plt.colorbar(label="MFCC")
-    plt.title("MFCC")
-    plt.xlabel("Frames")
-    plt.ylabel("MFCC Coefficients")
-    plt.show()
 
 if __name__ == "__main__":
 

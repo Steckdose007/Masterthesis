@@ -11,7 +11,19 @@ def plot_mel_spectrogram(word, phones=None):
     sample_rate = 24000
     scaling=24000/44100
     # Compute Mel-spectrogram
-    mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=128)
+    n_mels=128
+    frame_size=0.025
+    hop_size=0.005
+    n_mfcc=128
+    n_fft=2048
+    frame_length = int(frame_size * sample_rate)
+    hop_length = int(hop_size * sample_rate)
+    mel_spectrogram = librosa.feature.melspectrogram(
+        y=signal, sr=sample_rate, n_mels=n_mels, n_fft=n_fft, hop_length=hop_length, win_length=frame_length
+    )
+    mfccs = librosa.feature.mfcc(
+        y=signal, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels
+    )
     mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
     print(np.shape(mel_spectrogram_db))
     # Create a figure with two subplots
@@ -26,12 +38,12 @@ def plot_mel_spectrogram(word, phones=None):
 
     # Plot phone boundaries on the waveform
     if phones:
-        print("start: ",word.start_time/44100,phones[0].start_time/44100)
-        print("end: ",word.end_time/44100,phones[0].end_time/44100)
         for p in phones:
             # Adjust phone start and end times relative to the word start
-            phone_start_sample = abs(int((p.start_time*scaling - word.start_time*scaling)))
-            phone_end_sample = abs(int((p.end_time*scaling - word.start_time*scaling)))
+            phone_start_sample = abs(int((p.start_time - word.start_time)*scaling))
+            phone_end_sample = abs(int((p.end_time - word.start_time)*scaling))
+            print("start: ",phone_start_sample)
+            print("end: ",phone_end_sample)
             
             # Plot vertical lines for phone start and end times
             axs[0].axvline(x=phone_start_sample, color='green', linestyle='--', label='Phone Start')
@@ -41,24 +53,25 @@ def plot_mel_spectrogram(word, phones=None):
     axs[0].legend()
 
     # Plot the Mel spectrogram
-    img = axs[1].imshow(mel_spectrogram_db, aspect='auto', origin='lower', cmap='coolwarm')
+    img = axs[1].imshow(mfccs, aspect='auto', origin='lower', cmap='plasma')
     cbar = plt.colorbar(img, ax=axs[1], orientation='vertical', pad=0.01)
     cbar.set_label('Intensity (dB)', rotation=270, labelpad=15)
     #librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm', ax=axs[1])
-    axs[1].set_title(f"Mel Spectrogram for {word.label} {word.label_path}")
-    axs[1].set_xlabel("Time (s)")
-    axs[1].set_ylabel("Mel Frequency (Hz)")
-
+    axs[1].set_title(f"MFCC for {word.label} {word.label_path}")
+    axs[1].set_xlabel("Frames")
+    axs[1].set_ylabel("Coefficients")
+    hop_length = int(0.005 * sample_rate)
     # Plot phone boundaries on the spectrogram
     if phones:
         for p in phones:
             # Adjust phone start and end times relative to the word start (in seconds)
-            phone_start_time = abs((p.start_time*scaling - word.start_time*scaling)) / sample_rate
-            phone_end_time = abs((p.end_time*scaling - word.start_time*scaling)) / sample_rate
-
+            frame_start = int(((p.start_time - word.start_time)*scaling) / hop_length)
+            frame_end = int(((p.end_time - word.start_time)*scaling) / hop_length)
+            print("start: ",frame_start)
+            print("end: ",frame_end)
             # Plot vertical lines for phone start and end times
-            axs[1].axvline(x=phone_start_time, color='green', linestyle='--', label='Phone Start')
-            axs[1].axvline(x=phone_end_time, color='red', linestyle='--', label='Phone End')
+            axs[1].axvline(x=frame_start, color='green', linestyle='--', label='Phone Start')
+            axs[1].axvline(x=frame_end, color='red', linestyle='--', label='Phone End')
             
 
     axs[1].legend()

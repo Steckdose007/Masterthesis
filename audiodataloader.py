@@ -43,7 +43,6 @@ from numba import jit
 import timeit 
 import plotting
 sum_length =0
-word_lengths_by_webmouse = {}
 
 @dataclass
 class AudioSegment:
@@ -54,6 +53,7 @@ class AudioSegment:
     label: str  #word for example sonne
     label_path: str # sigmatism or normal
     path: str # which file it is from
+    #phonem_loc : list
 
 @jit(nopython=True)
 def rolling_std(signal, window_size):
@@ -122,8 +122,8 @@ class AudioDataLoader:
                     corresponding_csv = base_name + '.csv'
                     if corresponding_csv in csv_files:
                         i+=1
-                        print(i)
                         self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
+    
             return file_pairs
 
     def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.01, label=None):
@@ -206,19 +206,13 @@ class AudioDataLoader:
             word_segment = []
             word_start = None
             word_label = None
-            sentence_start = None
-            sentence_end = None
-            sentence_label = None
-            current_sentence = None
             dividing_word = False
-            sentence_will_end = False
             beginning = True
             current_word = None
             last_word = None
             word_fin = False
 
             # Make a copy of the sentences so we can keep track of unprocessed sentences
-            remaining_sentences = self.sentences.copy()
             next(reader)
             for row in reader:
                 current_word = row[5]
@@ -247,77 +241,53 @@ class AudioDataLoader:
                     segment = audio_data[int(start_time):int(end_time)]
                     if(self.downsample):
                         segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                        
                     self.phone_segments.append(
                         AudioSegment(start_time=start_time, 
                                     end_time=end_time, 
                                     audio_data=segment, 
-                                    sample_rate= row[5], 
-                                    label=row[3],
-                                    label_path=self.label_path,
-                                    path = wav_file)
+                                    sample_rate= row[5], #here we save the word the phone comes from 
+                                    label=row[3],# herre we save what phone type it is
+                                    label_path=self.label_path,#sigmatis or normal
+                                    path = wav_file)#path to wav file
                     )
                     
                 # Pause handling: Pauses should be included in sentences, not treated as a break
                 if current_word != last_word or current_word == '':
                     if word_segment:
-                        # If we're in a sentence after "dividing_word"
-                        if not dividing_word and not current_sentence:                       
-                            if not dividing_word:
-                                end_time = start_time  # because the word ends at the beginning of the pause but 5 ms already substracted and then the 5ms on top
-                                #Make a plot with word length by webmouse
-                                if self.label_path not in word_lengths_by_webmouse:
-                                     word_lengths_by_webmouse[self.label_path] = []
-                                word_length = (end_time - word_start) / 44100   
-                                word_lengths_by_webmouse[self.label_path].append(word_length)
-
-                                if self.word_bool:
-                                    ###make rolling std
-                                    word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
-                                    end_time = (int(end_time+(self.buffer_word*sample_rate)))
-                                    if(word_start <0):
-                                        word_start = 0
-                                    segment = audio_data[int(word_start):int(end_time)]
-                                    adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
-                                    adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
-                                    ###till here
-                                    if(self.downsample):
-                                        adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                    if(adjusted_segment.size >= 2048):
-                                        self.word_segments.append(
-                                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                        end_time=int(word_start+adjusted_end), 
-                                                        audio_data=adjusted_segment, 
-                                                        sample_rate=self.target_sr, 
-                                                        label=word_label,
-                                                        label_path=self.label_path,
-                                                        path = wav_file)
-                                        )
-                                # Check if we are past the word "Xylophone"
-                                if word_label == self.dividing_word:
-                                    dividing_word = True
-                                word_segment = []
-                                word_fin = True
-                                word_start = None
-                                word_label = None
-                        elif sentence_will_end:
-                            sentence_end = start_time # because the word ends at the beginning of the pause
-                            # Append the sentence segment and reset
-                            if self.sentence_bool:
-                                segment = audio_data[int(sentence_start):int(sentence_end)]
+                        # If we're in a sentence after "dividing_word"                      
+                        if not dividing_word:
+                            end_time = start_time  # because the word ends at the beginning of the pause but 5 ms already substracted and then the 5ms on top                
+                            if self.word_bool:
+                                ###make rolling std
+                                word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
+                                end_time = (int(end_time+(self.buffer_word*sample_rate)))
+                                if(word_start <0):
+                                    word_start = 0
+                                segment = audio_data[int(word_start):int(end_time)]
+                                adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
+                                adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
+                                ###till here
                                 if(self.downsample):
-                                        segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                self.sentence_segments.append(
-                                    AudioSegment(start_time=sentence_start, 
-                                                end_time=sentence_end, 
-                                                audio_data=segment, 
-                                                sample_rate=sample_rate, 
-                                                label=sentence_label,
-                                                label_path=self.label_path,
-                                                path = wav_file)
-                                )
-                            remaining_sentences.remove(current_sentence)  # Remove the processed sentence
-                            current_sentence = None  
-                            sentence_will_end = False
+                                    adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                                if(adjusted_segment.size >= 2048):
+                                    #print(adjusted_segment.size)
+                                    self.word_segments.append(
+                                        AudioSegment(start_time=int(word_start+adjusted_start), 
+                                                    end_time=int(word_start+adjusted_end), 
+                                                    audio_data=adjusted_segment, 
+                                                    sample_rate=self.target_sr, 
+                                                    label=word_label,
+                                                    label_path=self.label_path,
+                                                    path = wav_file)
+                                    )
+                            # Check if we are past the word "Xylophone"
+                            if word_label == self.dividing_word:
+                                dividing_word = True
+                            word_segment = []
+                            word_fin = True
+                            word_start = None
+                            word_label = None
                 else:#it is no pause but a phone (word part)
                     # We are in the middle of a word or at the beginning
                     if word_start is None: #at the beginning of a word
@@ -325,19 +295,6 @@ class AudioDataLoader:
                         last_word = current_word
                     word_label = row[5]  # Extract word label from the CSV
                     word_segment.append((start_time, end_time))
-
-                    # Check if we are in the sentence section (after Xylophone)
-                    if dividing_word:
-                        if current_sentence is None:
-                            # Now search through remaining sentences instead of starting from scratch
-                            for sentence in remaining_sentences:
-                                if word_label == sentence[0]:  # Match the first word of a sentence
-                                    current_sentence = sentence
-                                    sentence_start = start_time
-                                    sentence_label = sentence[0] + " " + sentence[1]  
-                                    break
-                        if current_sentence and word_label == current_sentence[1]:  # Last word of sentence
-                            sentence_will_end = True
 
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
@@ -395,14 +352,14 @@ def get_box_length(words_segments):
         label_count[label] += 1
 
     # Display the count for each label
-    print(label_count)
+    print(label_count )
     # Collect the word lengths per file (group by file paths)
     word_lengths_by_file = {}
 
     # Calculate word lengths for each word and group them by file path
     for word_segment in words_segments:
         sum_length += (word_segment.end_time - word_segment.start_time)
-        word_length = (word_segment.end_time - word_segment.start_time) / word_segment.sample_rate
+        word_length = (word_segment.end_time - word_segment.start_time) / 44100 #hier durch das teilen weil ich die marken abspeichere von dem audio das auf 44100 gesampled wurde.
         # if word_length > 1.2:
         #     # Plot the original signal and the rolling standard deviation
         #     leng = str(int(word_segment.end_time - word_segment.start_time))
@@ -440,11 +397,12 @@ def find_pairs(audio_segments,phones_segments):
     phones =["z","s","Z","S","ts"]
     phones_list_normal = []
     phones_list_sigmatism = []
-    segment = audio_segments[507]###choose word here
+    segment = audio_segments[20]###choose word here
     
     if segment.label_path == "sigmatism":
         print("It is Sigmatism")
         sigmatism = segment
+        #get path from other file with normal speech
         matching_path = segment.path.replace("sigmatism", "normal")
         base, ext = os.path.splitext(matching_path)
         path = f"{base[:-4]}{ext}"
@@ -506,38 +464,16 @@ def find_pairs(audio_segments,phones_segments):
 
 if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
-    # # Sample signal data
-    # np.random.seed(0)
-    # signal = np.random.randn(100000)  # Large array for performance testing
-    # window_size = 100
-
-    # Create a boxplot for word lengths by file from webmouse labels
-    # print(np.shape(word_lengths_by_webmouse))
-    # plt.figure(figsize=(12, 6))
-    # plt.boxplot([word_lengths for word_lengths in word_lengths_by_webmouse.values()], labels=word_lengths_by_webmouse.keys(),vert=False)
-    # plt.title("Distribution of Webmouse Lengths by Label")
-    # plt.ylabel("Label")
-    # plt.xlabel("Word Length (seconds)")
-    # plt.tight_layout()
-    # plt.show()
-
-
-    # # Timing the Numba implementation
-    # numba_time = timeit.timeit(lambda: rolling_std_numba(signal, window_size), number=10)
-    # print(f"Numba implementation time: {numba_time / 10:.5f} seconds")
-    # # Timing the Pandas implementation
-    # pandas_time = timeit.timeit(lambda: loader.rolling_std(signal, window_size), number=10)
-    # print(f"Pandas implementation time: {pandas_time / 10:.5f} seconds")
-
-
+   
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
-    #loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    #loader.save_segments_to_pickle(words_segments, "words_atleast2048long_24kHz.pkl")
+    #loader.save_segments_to_pickle(phones_segments, "phones_atleast2048long_24kHz.pkl")
+    #loader.save_segments_to_pickle(words_segments, "words_atleast2048.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    #phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    print(words_segments[0])
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     # biggest_sample=0
@@ -554,11 +490,11 @@ if __name__ == "__main__":
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)
     # print("shape",np.shape(words_segments))
-    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,None)
-    print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
+    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
     #plotting.plot_mel_spectrogram(normal)
-    plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
-    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
+    plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
 
    

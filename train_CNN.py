@@ -150,6 +150,7 @@ if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # Load preprocessed audio segments from a pickle file
+    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     segments_train, segments_test = split_list_after_speaker(words_segments)
     print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
@@ -179,8 +180,8 @@ if __name__ == "__main__":
         "target_length": 224
     }
     # Create dataset 
-    segments_test = AudioSegmentDataset(segments_test, mfcc_dim, augment= False)
-    segments_train = AudioSegmentDataset(segments_train, mfcc_dim, augment = True)
+    segments_test = AudioSegmentDataset(segments_test,phones_segments, mfcc_dim, augment= False)
+    segments_train = AudioSegmentDataset(segments_train,phones_segments, mfcc_dim, augment = True)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
 
