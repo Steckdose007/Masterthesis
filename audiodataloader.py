@@ -40,6 +40,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from numba import jit
+
 import timeit 
 import plotting
 sum_length =0
@@ -51,7 +52,7 @@ class AudioSegment:
     end_time: float
     audio_data: np.ndarray
     sample_rate: int
-    label: str  #word for example sonne
+    label: str  #word for example "sonne"
     label_path: str # sigmatism or normal
     path: str # which file it is from
     #phonem_loc : list
@@ -90,29 +91,29 @@ def compute_cpp(audio, sr):
     peak_idx = np.argmax(valid_cepstrum)
     cpp_peak  = valid_cepstrum[peak_idx]  # CPP is the height of the cepstral peak
     cpp_quefrency = valid_quefrency[peak_idx]
-    # Plot the spectrum
-    plt.figure(figsize=(12, 6))
+    # # Plot the spectrum
+    # plt.figure(figsize=(12, 6))
 
-    # Plot log spectrum
-    plt.subplot(1, 2, 1)
-    plt.plot(freq[:len(log_spectrum)//2], log_spectrum[:len(log_spectrum)//2])
-    plt.title('Log Spectrum')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Log Power')
+    # # Plot log spectrum
+    # plt.subplot(1, 2, 1)
+    # plt.plot(freq[:len(log_spectrum)//2], log_spectrum[:len(log_spectrum)//2])
+    # plt.title('Log Spectrum')
+    # plt.xlabel('Frequency (Hz)')
+    # plt.ylabel('Log Power')
 
-    # Plot cepstrum with the peak highlighted
-    plt.subplot(1, 2, 2)
-    plt.plot(quefrency, cepstrum, label='Cepstrum')
-    plt.axvline(x=cpp_quefrency, color='r', linestyle='--', label=f'CPP Peak: {cpp_peak:.2f}')
-    plt.scatter([cpp_quefrency], [cpp_peak], color='r')  # Mark the peak
-    plt.xlim(min_quef, max_quef)
-    plt.title(f'Cepstrum with CPP Peak in Log: {(20 * np.log10(cpp_peak)):.2f}')
-    plt.xlabel('Quefrency (s)')
-    plt.ylabel('Cepstral Coefficient')
-    plt.legend()
+    # # Plot cepstrum with the peak highlighted
+    # plt.subplot(1, 2, 2)
+    # plt.plot(quefrency, cepstrum, label='Cepstrum')
+    # plt.axvline(x=cpp_quefrency, color='r', linestyle='--', label=f'CPP Peak: {cpp_peak:.2f}')
+    # plt.scatter([cpp_quefrency], [cpp_peak], color='r')  # Mark the peak
+    # plt.xlim(min_quef, max_quef)
+    # plt.title(f'Cepstrum with CPP Peak in Log: {(20 * np.log10(cpp_peak)):.2f}')
+    # plt.xlabel('Quefrency (s)')
+    # plt.ylabel('Cepstral Coefficient')
+    # plt.legend()
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
     return cpp_peak 
 
 class AudioDataLoader:
@@ -508,29 +509,89 @@ def find_pairs(audio_segments,phones_segments):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
+def get_cpp(words_segments):
+    # sigmatism = []
+    # normal = []
+    # for word in words_segments:
+    #     filename1 = os.path.splitext(os.path.basename(word.path))[0]  
+    #     print(filename1)
+    #     cpp_peak = compute_cpp(word.audio_data,word.sample_rate)
+    #     if word.label_path == "sigmatism":
+    #         sigmatism.append((20 * np.log10(cpp_peak)))
+    #     else:
+    #         normal.append((20 * np.log10(cpp_peak)))
+
+    # data = [sigmatism, normal]
+    # labels = ['Sigmatism', 'Normal']
+
+    # # Create the boxplot
+    # plt.figure(figsize=(8, 6))
+    # plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
+
+    # # Customize the appearance
+    # plt.title('CPP Distribution for Sigmatism and Normal Words', fontsize=14)
+    # plt.xlabel('Category', fontsize=12)
+    # plt.ylabel('CPP (dB)', fontsize=12)
+
+    # # Add grid lines
+    # plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+    # # Show the plot
+    # plt.show()
+
+    data = []
+
+    for word in words_segments:
+        filename1 = os.path.splitext(os.path.basename(word.path))[0]  
+        if(word.label_path == "sigmatism"):
+            filename1 = filename1.replace("_sig", "")
+        cpp_peak = compute_cpp(word.audio_data, word.sample_rate)
+        data.append({'Speaker': filename1, 'Word': word.label, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
+
+    df = pd.DataFrame(data)
+    print(df.head())
+    # Group by Speaker
+    unique_speakers = df['Speaker'].unique()
+    # Group speakers into batches of 20
+    batch_size = 10
+    batches = [unique_speakers[i:i + batch_size] for i in range(0, len(unique_speakers), batch_size)]
+
+    # Plot each batch
+    for i, batch in enumerate(batches):
+        plt.figure(figsize=(12, 10))  # Adjust size for horizontal plot
+        
+        # Filter data for the current batch of speakers
+        batch_data = df[df['Speaker'].isin(batch)]
+        
+        # Horizontal boxplot data
+        categories = ['normal', 'sigmatism']
+        data = [batch_data[(batch_data['Speaker'] == speaker) & (batch_data['Category'] == cat)]['CPP']
+                for speaker in batch for cat in categories]
+        
+        labels = [f"{speaker} ({cat})" for speaker in batch for cat in categories]
+        
+        plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True, vert=False)
+        plt.title(f"CPP Distribution for Speakers Batch {i + 1}")
+        plt.xlabel("CPP (dB)")
+        plt.ylabel("Speakers (Normal and Sigmatism)")
+        plt.grid(axis='x', linestyle='--', alpha=0.7)
+        
+        plt.tight_layout()
+        plt.show()
+
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
-   
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
     #loader.save_segments_to_pickle(phones_segments, "phones_atleast2048long_24kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_atleast2048.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
+    #phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    # biggest_sample=0
-    # # Calculate word lengths for each word and group them by fil path
-    # for word_segment in words_segments:
-    #     if(biggest_sample<word_segment.audio_data.shape[1]):
-    #         print(word_segment.audio_data.shape)
-    #         biggest_sample = word_segment.audio_data.shape[1]
-    #         print(biggest_sample,word_segment.label)
-    # print("biggest sample: ",biggest_sample)
-    # sum_length =0
     
+
     #get_box_length(words_segments)
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)
