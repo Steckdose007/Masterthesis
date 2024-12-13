@@ -43,6 +43,7 @@ from numba import jit
 import timeit 
 import plotting
 sum_length =0
+cpp_values = []
 
 @dataclass
 class AudioSegment:
@@ -69,6 +70,50 @@ def rolling_std(signal, window_size):
     """
     return np.array([np.std(signal[i:i+window_size]) for i in range(len(signal) - window_size)])
 
+def compute_cpp(audio, sr):
+    # Compute the cepstrum
+    spectrum = np.abs(np.fft.fft(audio))**2
+    log_spectrum = np.log(spectrum + 1e-12)
+    cepstrum = np.fft.ifft(log_spectrum).real
+    
+    # Identify the CPP
+    freq = np.fft.fftfreq(len(audio), 1 / sr)
+    quefrency = np.arange(len(cepstrum)) / sr
+    min_pitch, max_pitch = 50, 500  # Common range for pitch (Hz)
+    min_quef = 1 / max_pitch
+    max_quef = 1 / min_pitch
+    
+    valid_indices = (quefrency >= min_quef) & (quefrency <= max_quef)
+    valid_cepstrum = cepstrum[valid_indices]
+    valid_quefrency = quefrency[valid_indices]
+    # Find the peak in the valid quefrency range
+    peak_idx = np.argmax(valid_cepstrum)
+    cpp_peak  = valid_cepstrum[peak_idx]  # CPP is the height of the cepstral peak
+    cpp_quefrency = valid_quefrency[peak_idx]
+    # Plot the spectrum
+    plt.figure(figsize=(12, 6))
+
+    # Plot log spectrum
+    plt.subplot(1, 2, 1)
+    plt.plot(freq[:len(log_spectrum)//2], log_spectrum[:len(log_spectrum)//2])
+    plt.title('Log Spectrum')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Log Power')
+
+    # Plot cepstrum with the peak highlighted
+    plt.subplot(1, 2, 2)
+    plt.plot(quefrency, cepstrum, label='Cepstrum')
+    plt.axvline(x=cpp_quefrency, color='r', linestyle='--', label=f'CPP Peak: {cpp_peak:.2f}')
+    plt.scatter([cpp_quefrency], [cpp_peak], color='r')  # Mark the peak
+    plt.xlim(min_quef, max_quef)
+    plt.title(f'Cepstrum with CPP Peak in Log: {(20 * np.log10(cpp_peak)):.2f}')
+    plt.xlabel('Quefrency (s)')
+    plt.ylabel('Cepstral Coefficient')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+    return cpp_peak 
 
 class AudioDataLoader:
     def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
@@ -191,7 +236,7 @@ class AudioDataLoader:
         return adjusted_start, adjusted_end
 
     def process_csv(self,wav_file,csv_file):
-        global word_lengths_by_webmouse
+        global cpp_values
 
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
@@ -272,6 +317,7 @@ class AudioDataLoader:
                                     adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
                                 if(adjusted_segment.size >= 2048):
                                     #print(adjusted_segment.size)
+                                    compute_cpp(adjusted_segment, self.target_sr)
                                     self.word_segments.append(
                                         AudioSegment(start_time=int(word_start+adjusted_start), 
                                                     end_time=int(word_start+adjusted_end), 
@@ -463,7 +509,7 @@ def find_pairs(audio_segments,phones_segments):
     return None, None,None,None
 
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
    
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
@@ -473,7 +519,6 @@ if __name__ == "__main__":
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
     phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    print(words_segments[0])
     #filtered_words = filter_and_pickle_audio_segments(words_segments)
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     # biggest_sample=0
@@ -490,11 +535,11 @@ if __name__ == "__main__":
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)
     # print("shape",np.shape(words_segments))
-    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
     #plotting.plot_mel_spectrogram(normal)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
-    plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
 
    

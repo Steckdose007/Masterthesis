@@ -197,7 +197,7 @@ class AudioSegmentDataset(Dataset):
                     phones_list.append(phone)
         return  phones_list
 
-    def extract_mfcc_based_on_phone_location(mfcc, word_label, word_length_frames, phone_chars=['s','S','Z', 'z','X', 'x'], target_size=(224, 224)):
+    def extract_mfcc_based_on_phone_location(mfcc, word_label, phone_chars=['s','S','Z', 'z','X', 'x'], target_size=(224, 224)):
         """
         Extracts the relevant portion of the MFCC based on the location of specific phones
         (e.g., 's', 'z', 'x') in the word and resizes it to the target size.
@@ -214,7 +214,7 @@ class AudioSegmentDataset(Dataset):
         """
         # Normalize word length into equal parts
         num_chars = len(word_label)
-        frames_per_char = word_length_frames // num_chars
+        frames_per_char = mfcc.shape[1] // num_chars
 
         # Find positions of the phone characters in the word
         phone_positions = [i for i, char in enumerate(word_label) if char in phone_chars]
