@@ -68,7 +68,7 @@ def plot_mel_spectrogram(word, phones=None):
     axs[0].legend()
 
     # Plot the Mel spectrogram
-    img = axs[1].imshow(mfccs, aspect='auto', origin='lower', cmap='plasma')
+    img = axs[1].imshow(mel_spectrogram_db, aspect='auto', origin='lower', cmap='plasma')
     cbar = plt.colorbar(img, ax=axs[1], orientation='vertical', pad=0.01)
     cbar.set_label('Intensity (dB)', rotation=270, labelpad=15)
     #librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm', ax=axs[1])
@@ -76,10 +76,10 @@ def plot_mel_spectrogram(word, phones=None):
     axs[1].set_xlabel("Frames")
     axs[1].set_ylabel("Coefficients")
     
-    """Approach 2 see twist"""
+    # """Approach 2 see twist"""
     # # Normalize word length into equal parts
     # num_chars = len(word.label)
-    # frames_per_char = mfccs.shape[1] // num_chars
+    # frames_per_char = mel_spectrogram_db.shape[1] // num_chars
     # phone_chars=['s','S','Z', 'z','X', 'x']
     # # Find positions of the phone characters in the word
     # phone_positions = [i for i, char in enumerate(word.label) if char in phone_chars]
