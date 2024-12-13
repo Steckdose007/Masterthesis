@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset , plot_mfcc
+from Dataloader_pytorch import AudioSegmentDataset 
 from sklearn.model_selection import train_test_split
 import datetime
 import os
@@ -130,19 +130,23 @@ def split_list_after_speaker(words_segments):
     speakers = list(speaker_to_segments.keys())
     print("number speakers: ",np.shape(speakers))
     # Split speakers into training and testing sets
-    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.20)
-    
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
+
     # Collect word segments for each split
     segments_train = []
     segments_test = []
-    print(f"Number of speakers in train: {len(speakers_train)}, test: {len(speakers_test)}")
+    segments_val = []
+    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
 
     for speaker in speakers_train:
         segments_train.extend(speaker_to_segments[speaker])
-
+    for speaker in speakers_val:
+        segments_val.extend(speaker_to_segments[speaker])
     for speaker in speakers_test:
         segments_test.extend(speaker_to_segments[speaker])
-    return segments_train, segments_test
+
+    return segments_train, segments_val, segments_test
 
 
 if __name__ == "__main__":
@@ -152,7 +156,8 @@ if __name__ == "__main__":
     # Load preprocessed audio segments from a pickle file
     phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    segments_train, segments_test = split_list_after_speaker(words_segments)
+    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+
     print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
     # Set target length for padding/truncation
     # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
@@ -180,10 +185,10 @@ if __name__ == "__main__":
         "target_length": 224
     }
     # Create dataset 
-    segments_test = AudioSegmentDataset(segments_test,phones_segments, mfcc_dim, augment= False)
+    segments_val = AudioSegmentDataset(segments_val,phones_segments, mfcc_dim, augment= False)
     segments_train = AudioSegmentDataset(segments_train,phones_segments, mfcc_dim, augment = True)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
 
 
     # Initialize model, loss function, and optimizer
@@ -202,4 +207,4 @@ if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     best_model_filename = f"Mobilenet_100epoch_melspectogram_{timestamp}.pth"
     
-    train_model(model, train_loader, test_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)

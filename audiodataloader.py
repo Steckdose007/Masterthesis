@@ -444,7 +444,7 @@ def find_pairs(audio_segments,phones_segments):
     phones =["z","s","Z","S","ts"]
     phones_list_normal = []
     phones_list_sigmatism = []
-    segment = audio_segments[2]###choose word here
+    segment = audio_segments[21]###choose word here
     
     if segment.label_path == "sigmatism":
         print("It is Sigmatism")
@@ -584,10 +584,10 @@ if __name__ == "__main__":
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
     # sentences_segments = loader.create_dataclass_sentences()
-    #loader.save_segments_to_pickle(phones_segments, "phones_atleast2048long_24kHz.pkl")
+   # loader.save_segments_to_pickle(phones_segments, "phones_atleast2048long_24kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_atleast2048.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    #phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     
@@ -596,11 +596,11 @@ if __name__ == "__main__":
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs
     # print("max_length: ",max_length)
     # print("shape",np.shape(words_segments))
-    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label)
     #plotting.plot_mel_spectrogram(normal)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
-    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
 
    
