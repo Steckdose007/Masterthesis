@@ -173,7 +173,7 @@ if __name__ == "__main__":
     n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
     learning_rate = 0.00001
-    num_epochs = 100
+    num_epochs = 50
     batch_size = 16
 
     mfcc_dim={
@@ -205,6 +205,6 @@ if __name__ == "__main__":
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"Mobilenet_100epoch_melspectogram_{timestamp}.pth"
+    best_model_filename = f"Mobilenet_Attention_Apptoach1_{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
