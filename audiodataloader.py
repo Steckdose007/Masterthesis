@@ -509,36 +509,72 @@ def find_pairs(audio_segments,phones_segments):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
+def extract_phone_segments(segment):
+    """Approach 2
+    Returns:
+        extracted and conncatenated frames of phones of intrest from a segment.
+    """
+    audio_signal = segment.audio_data
+    segment_label = segment.label
+    #print(segment_label)
+    phone_chars=['s','S','Z', 'z','X', 'x','Ÿ']#,'Ã'
+    # Get the total duration of the audio signal in seconds
+    sr=24000
+    total_duration = len(audio_signal) / sr
+
+    # Normalize word length into equal time parts
+    num_chars = len(segment_label)
+    time_per_char = total_duration / num_chars
+
+    # Find positions of the phone characters in the word
+    phone_positions = [i for i, char in enumerate(segment_label) if char in phone_chars]
+    #print(phone_positions)
+    # Map phone positions to time intervals
+    audio_segments = []
+    for position in phone_positions:
+        char_start_time = position * time_per_char
+        char_end_time = (position + 1) * time_per_char
+        if char_start_time < 0 or char_end_time > len(audio_signal) or char_start_time == char_end_time:
+            continue
+        char_start_time = int(char_start_time * sr)
+        char_end_time = int(char_end_time * sr)
+        audio_segments.append(audio_signal[char_start_time:char_end_time])
+    combined_audio = np.concatenate(audio_segments, axis=0)
+    
+    return combined_audio
+
+
 def get_cpp(words_segments,phones = None):
     """CPP for normal and sigmatism over all words"""
-    # sigmatism = []
-    # normal = []
-    # for word in words_segments:
-    #     filename1 = os.path.splitext(os.path.basename(word.path))[0]  
-    #     print(filename1)
-    #     cpp_peak = compute_cpp(word.audio_data,word.sample_rate)
-    #     if word.label_path == "sigmatism":
-    #         sigmatism.append((20 * np.log10(cpp_peak)))
-    #     else:
-    #         normal.append((20 * np.log10(cpp_peak)))
+    sigmatism = []
+    normal = []
+    for word in words_segments:
+        filename1 = os.path.splitext(os.path.basename(word.path))[0]  
+        #print(filename1)
+        extracted = extract_phone_segments(word)
+        cpp_peak = compute_cpp(extracted,word.sample_rate)
+        if word.label_path == "sigmatism":
+            sigmatism.append((20 * np.log10(cpp_peak)))
+        else:
+            normal.append((20 * np.log10(cpp_peak)))
 
-    # data = [sigmatism, normal]
-    # labels = ['Sigmatism', 'Normal']
+    data = [sigmatism, normal]
+    labels = ['Sigmatism', 'Normal']
 
-    # # Create the boxplot
-    # plt.figure(figsize=(8, 6))
-    # plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
+    # Create the boxplot
+    plt.figure(figsize=(8, 6))
+    plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
 
-    # # Customize the appearance
-    # plt.title('CPP Distribution for Sigmatism and Normal Words', fontsize=14)
-    # plt.xlabel('Category', fontsize=12)
-    # plt.ylabel('CPP (dB)', fontsize=12)
+    # Customize the appearance
+    plt.title('CPP Distribution for Sigmatism and Normal Words', fontsize=14)
+    plt.xlabel('Category', fontsize=12)
+    plt.ylabel('CPP (dB)', fontsize=12)
 
-    # # Add grid lines
-    # plt.grid(axis='y', linestyle='--', alpha=0.7)
+    # Add grid lines
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
 
-    # # Show the plot
-    # plt.show()
+    # Show the plot
+    plt.show()
 
     """CPP per word per speaker"""
     data = []
@@ -546,7 +582,8 @@ def get_cpp(words_segments,phones = None):
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         if(word.label_path == "sigmatism"):
             filename1 = filename1.replace("_sig", "")
-        cpp_peak = compute_cpp(word.audio_data, word.sample_rate)
+        extracted = extract_phone_segments(word)
+        cpp_peak = compute_cpp(extracted, word.sample_rate)
         data.append({'Speaker': filename1, 'Word': word.label, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
 
     df = pd.DataFrame(data)
@@ -591,7 +628,7 @@ if __name__ == "__main__":
     phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    
+    get_cpp(words_segments)
 
     #get_box_length(words_segments)
     # max_length = max([words.audio_data.shape[1] for words in words_segments]) #maximum of all mfccs

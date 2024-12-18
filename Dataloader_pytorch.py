@@ -66,7 +66,8 @@ class AudioSegmentDataset(Dataset):
         # Normalize word length into equal parts
         num_chars = len(segment.label)
         frames_per_char = normalized_spectrogram.shape[1] // num_chars
-        phone_chars=['s','S','Z', 'z','X', 'x']
+        phone_chars=['s','S','Z', 'z','X', 'x','Ã','Ÿ']
+
         # Find positions of the phone characters in the word
         phone_positions = [i for i, char in enumerate(segment.label) if char in phone_chars]
         for position in phone_positions:
