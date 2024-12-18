@@ -509,7 +509,8 @@ def find_pairs(audio_segments,phones_segments):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
-def get_cpp(words_segments):
+def get_cpp(words_segments,phones = None):
+    """CPP for normal and sigmatism over all words"""
     # sigmatism = []
     # normal = []
     # for word in words_segments:
@@ -539,8 +540,8 @@ def get_cpp(words_segments):
     # # Show the plot
     # plt.show()
 
+    """CPP per word per speaker"""
     data = []
-
     for word in words_segments:
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         if(word.label_path == "sigmatism"):

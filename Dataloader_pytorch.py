@@ -46,9 +46,6 @@ class AudioSegmentDataset(Dataset):
 
     def __getitem__(self, idx):
         segment = self.audio_segments[idx]
-             
-                
-
         audio_data = segment.audio_data
         label = 0
         if(segment.label_path == "sigmatism"):
@@ -65,29 +62,27 @@ class AudioSegmentDataset(Dataset):
 
         """find phones of the word"""
         frames_with_phone = []
-        scaling=24000/44100
         """Approach 2 see twist"""
-        # # Normalize word length into equal parts
-        # num_chars = len(segment.label)
-        # frames_per_char = normalized_spectrogram.shape[1] // num_chars
-        # phone_chars=['s','S','Z', 'z','X', 'x']
-        # # Find positions of the phone characters in the word
-        # phone_positions = [i for i, char in enumerate(segment.label) if char in phone_chars]
-        # for position in phone_positions:
-        #     char_start_frame = position * frames_per_char
-        #     char_end_frame = (position + 1) * frames_per_char
-        #     frames_with_phone.append((char_start_frame,char_end_frame))
+        # Normalize word length into equal parts
+        num_chars = len(segment.label)
+        frames_per_char = normalized_spectrogram.shape[1] // num_chars
+        phone_chars=['s','S','Z', 'z','X', 'x']
+        # Find positions of the phone characters in the word
+        phone_positions = [i for i, char in enumerate(segment.label) if char in phone_chars]
+        for position in phone_positions:
+            char_start_frame = position * frames_per_char
+            char_end_frame = (position + 1) * frames_per_char
+            frames_with_phone.append((char_start_frame,char_end_frame))
 
         """APProach 1 see twist"""    
-        phones = self.find_pairs(segment,self.phones)
-        hop_length = int(self.mfcc_dict["hop_size"] * segment.sample_rate)
-        #Plot phone boundaries on the spectrogram
-        
-        for p in phones:
-            # Adjust phone start and end times relative to the word start (in seconds)
-            frame_start = abs(int(((p.start_time - segment.start_time)*scaling) / hop_length))
-            frame_end = abs(int(((p.end_time - segment.start_time)*scaling) / hop_length))
-            frames_with_phone.append((frame_start,frame_end))
+        # phones = self.find_pairs(segment,self.phones)
+        # scaling=24000/44100
+        # hop_length = int(self.mfcc_dict["hop_size"] * segment.sample_rate)        
+        # for p in phones:
+        #     # Adjust phone start and end times relative to the word start (in seconds)
+        #     frame_start = abs(int(((p.start_time - segment.start_time)*scaling) / hop_length))
+        #     frame_end = abs(int(((p.end_time - segment.start_time)*scaling) / hop_length))
+        #     frames_with_phone.append((frame_start,frame_end))
 
 
         #print(normalized_spectrogram.shape)
