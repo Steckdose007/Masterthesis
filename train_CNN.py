@@ -158,14 +158,9 @@ if __name__ == "__main__":
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
 
-    print(f"Number of word segments in train: {len(segments_train)}, test: {len(segments_test)}")
+    print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
     # Set target length for padding/truncation
     # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
-    target_length_8kHz = int(1.2*11811) 
-    target_length_16kHz = int(1.2*23622)  
-    target_length_24kHz = int(1.2*35433)  
-    target_length_32kHz = int(1.2*47244)  
-    target_length_44kHz = int(1.2*65108) 
     target_length_24kHz_MFCC = int(224)#data augmentstion already done and number of frames.
     target_length = target_length_24kHz_MFCC
 
@@ -205,6 +200,6 @@ if __name__ == "__main__":
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"Mobilenet_Attention_Apptoach1_{timestamp}.pth"
+    best_model_filename = f"Mobilenet_Attention_Approach2_{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
