@@ -39,8 +39,8 @@ import csv
 import pickle
 import numpy as np
 import pandas as pd
-#from numba import jit
-
+from numba import jit
+from scipy.signal import find_peaks
 import timeit 
 import plotting
 sum_length =0
@@ -71,50 +71,6 @@ def rolling_std(signal, window_size):
     """
     return np.array([np.std(signal[i:i+window_size]) for i in range(len(signal) - window_size)])
 
-def compute_cpp(audio, sr):
-    # Compute the cepstrum
-    spectrum = np.abs(np.fft.fft(audio))**2
-    log_spectrum = np.log(spectrum + 1e-12)
-    cepstrum = np.fft.ifft(log_spectrum).real
-    
-    # Identify the CPP
-    freq = np.fft.fftfreq(len(audio), 1 / sr)
-    quefrency = np.arange(len(cepstrum)) / sr
-    min_pitch, max_pitch = 50, 500  # Common range for pitch (Hz)
-    min_quef = 1 / max_pitch
-    max_quef = 1 / min_pitch
-    
-    valid_indices = (quefrency >= min_quef) & (quefrency <= max_quef)
-    valid_cepstrum = cepstrum[valid_indices]
-    valid_quefrency = quefrency[valid_indices]
-    # Find the peak in the valid quefrency range
-    peak_idx = np.argmax(valid_cepstrum)
-    cpp_peak  = valid_cepstrum[peak_idx]  # CPP is the height of the cepstral peak
-    cpp_quefrency = valid_quefrency[peak_idx]
-    # Plot the spectrum
-    plt.figure(figsize=(12, 6))
-
-    # Plot log spectrum
-    plt.subplot(1, 2, 1)
-    plt.plot(freq[:len(log_spectrum)//2], log_spectrum[:len(log_spectrum)//2])
-    plt.title('Log Spectrum')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Log Power')
-
-    # Plot cepstrum with the peak highlighted
-    plt.subplot(1, 2, 2)
-    plt.plot(quefrency, cepstrum, label='Cepstrum')
-    plt.axvline(x=cpp_quefrency, color='r', linestyle='--', label=f'CPP Peak: {cpp_peak:.2f}')
-    plt.scatter([cpp_quefrency], [cpp_peak], color='r')  # Mark the peak
-    plt.xlim(min_quef, max_quef)
-    plt.title(f'Cepstrum with CPP Peak in Log: {(20 * np.log10(cpp_peak)):.2f}')
-    plt.xlabel('Quefrency (s)')
-    plt.ylabel('Cepstral Coefficient')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
-    return cpp_peak 
 
 class AudioDataLoader:
     def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
@@ -122,7 +78,7 @@ class AudioDataLoader:
         self.word_bool = word_data
         self.sentence_bool = sentence_data
         self.word_segments = []
-        self.target_sr = 16000
+        self.target_sr = 24000
         self.org_sample_rate = 44100
         self.sentence_segments = []
         self.phone_segments = []
@@ -510,113 +466,7 @@ def find_pairs(audio_segments,phones_segments):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
-def extract_phone_segments(segment):
-    """Approach 2
-    Returns:
-        extracted and conncatenated frames of phones of intrest from a segment.
-    """
-    audio_signal = segment.audio_data
-    segment_label = segment.label
-    #print(segment_label)
-    phone_chars=['s','S','Z', 'z','X', 'x','Ÿ']#,'Ã'
-    # Get the total duration of the audio signal in seconds
-    sr=24000
-    total_duration = len(audio_signal) / sr
 
-    # Normalize word length into equal time parts
-    num_chars = len(segment_label)
-    time_per_char = total_duration / num_chars
-
-    # Find positions of the phone characters in the word
-    phone_positions = [i for i, char in enumerate(segment_label) if char in phone_chars]
-    #print(phone_positions)
-    # Map phone positions to time intervals
-    audio_segments = []
-    for position in phone_positions:
-        char_start_time = position * time_per_char
-        char_end_time = (position + 1) * time_per_char
-        if char_start_time < 0 or char_end_time > len(audio_signal) or char_start_time == char_end_time:
-            continue
-        char_start_time = int(char_start_time * sr)
-        char_end_time = int(char_end_time * sr)
-        audio_segments.append(audio_signal[char_start_time:char_end_time])
-    combined_audio = np.concatenate(audio_segments, axis=0)
-    
-    return combined_audio
-
-
-def get_cpp(words_segments,phones = None):
-    """CPP for normal and sigmatism over all words"""
-    sigmatism = []
-    normal = []
-    for word in words_segments:
-        filename1 = os.path.splitext(os.path.basename(word.path))[0]  
-        #print(filename1)
-        extracted = extract_phone_segments(word)
-        cpp_peak = compute_cpp(extracted,word.sample_rate)
-        if word.label_path == "sigmatism":
-            sigmatism.append((20 * np.log10(cpp_peak)))
-        else:
-            normal.append((20 * np.log10(cpp_peak)))
-
-    data = [sigmatism, normal]
-    labels = ['Sigmatism', 'Normal']
-
-    # Create the boxplot
-    plt.figure(figsize=(8, 6))
-    plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
-
-    # Customize the appearance
-    plt.title('CPP Distribution for Sigmatism and Normal Words', fontsize=14)
-    plt.xlabel('Category', fontsize=12)
-    plt.ylabel('CPP (dB)', fontsize=12)
-
-    # Add grid lines
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-    # Show the plot
-    plt.show()
-
-    """CPP per word per speaker"""
-    data = []
-    for word in words_segments:
-        filename1 = os.path.splitext(os.path.basename(word.path))[0]  
-        if(word.label_path == "sigmatism"):
-            filename1 = filename1.replace("_sig", "")
-        extracted = extract_phone_segments(word)
-        cpp_peak = compute_cpp(extracted, word.sample_rate)
-        data.append({'Speaker': filename1, 'Word': word.label, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
-
-    df = pd.DataFrame(data)
-    print(df.head())
-    # Group by Speaker
-    unique_speakers = df['Speaker'].unique()
-    # Group speakers into batches of 20
-    batch_size = 10
-    batches = [unique_speakers[i:i + batch_size] for i in range(0, len(unique_speakers), batch_size)]
-
-    # Plot each batch
-    for i, batch in enumerate(batches):
-        plt.figure(figsize=(12, 10))  # Adjust size for horizontal plot
-        
-        # Filter data for the current batch of speakers
-        batch_data = df[df['Speaker'].isin(batch)]
-        
-        # Horizontal boxplot data
-        categories = ['normal', 'sigmatism']
-        data = [batch_data[(batch_data['Speaker'] == speaker) & (batch_data['Category'] == cat)]['CPP']
-                for speaker in batch for cat in categories]
-        
-        labels = [f"{speaker} ({cat})" for speaker in batch for cat in categories]
-        
-        plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True, vert=False)
-        plt.title(f"CPP Distribution for Speakers Batch {i + 1}")
-        plt.xlabel("CPP (dB)")
-        plt.ylabel("Speakers (Normal and Sigmatism)")
-        plt.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        plt.tight_layout()
-        plt.show()
 
 if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
@@ -626,7 +476,7 @@ if __name__ == "__main__":
     #loader.save_segments_to_pickle(phones_segments, "phone_atleast2048long_16kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_atleast2048long_16kHz.pkl")
     # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    phones_segments = loader.load_segments_from_pickle("phone__24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
     get_cpp(words_segments)
