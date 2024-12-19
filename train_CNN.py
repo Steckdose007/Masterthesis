@@ -14,7 +14,7 @@ from tqdm import tqdm
 from collections import defaultdict
 import librosa
 from torch.nn.functional import interpolate
-from torchsummary import summary
+#from torchsummary import summary
 
 def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy

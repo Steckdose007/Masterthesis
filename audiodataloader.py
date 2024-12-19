@@ -39,7 +39,7 @@ import csv
 import pickle
 import numpy as np
 import pandas as pd
-from numba import jit
+#from numba import jit
 
 import timeit 
 import plotting
@@ -57,7 +57,7 @@ class AudioSegment:
     path: str # which file it is from
     #phonem_loc : list
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def rolling_std(signal, window_size):
     """
     Compute the rolling standard deviation over a given window size.

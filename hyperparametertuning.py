@@ -49,7 +49,7 @@ def prepare_dataset():
     words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
     segments_train1, segments_val1, segments_test = split_list_after_speaker(words_segments)
-    print(f"Number of word segments in train: {len(segments_train)}, val: {len(segments_val)}")
+    print(f"Number of word segments in train: {len(segments_train1)}, val: {len(segments_val1)}")
     mfcc_dim={
         "n_mfcc":128, 
         "n_mels":128, 
@@ -88,7 +88,7 @@ def objective(trial):
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     # Training loop
-    num_epochs = 15
+    num_epochs = 1
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -142,11 +142,11 @@ def optimize_with_progress(study, objective, n_trials):
 
 
 if __name__ == "__main__":
-    segments_train, segments_val = prepare_dataset()
+    segments_train,segments_val = prepare_dataset()
     # Create Optuna study
     study = optuna.create_study(direction='maximize')
     # Optimize 
-    optimize_with_progress(study, objective, n_trials=50)    # Print best trial
+    optimize_with_progress(study, objective, n_trials=2)    # Print best trial
     print("Best trial:")
     trial = study.best_trial
     print(f"  Accuracy: {trial.value}")
