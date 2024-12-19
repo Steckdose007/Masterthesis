@@ -8,8 +8,8 @@ from scipy.signal import savgol_filter
 def plot_mel_spectrogram(word, phones=None):
 
     signal = word.audio_data
-    sample_rate = 24000
-    scaling=24000/44100
+    sample_rate = word.sample_rate
+    scaling=sample_rate/44100
     # Compute Mel-spectrogram
     n_mels=128
     frame_size=0.025
