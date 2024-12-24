@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from audiodataloader import AudioDataLoader, AudioSegment
 import random
 import cv2
+from tqdm import tqdm  
 import os
 from data_augmentation import apply_augmentation
 @dataclass
@@ -49,7 +50,7 @@ class AudioSegmentDataset(Dataset):
         label = 0
         if(segment.label_path == "sigmatism"):
             label = 1
-        if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
+        if self.augment and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
             
         #mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
@@ -62,30 +63,32 @@ class AudioSegmentDataset(Dataset):
         """find phones of the word"""
         frames_with_phone = []
         """Approach 2 see twist"""
-        # Normalize word length into equal parts
-        num_chars = len(segment.label)
-        frames_per_char = normalized_spectrogram.shape[1] // num_chars
-        phone_chars=['s','S','Z','z','X','x','Ÿ'] #'Ã',
+        # # Normalize word length into equal parts
+        # num_chars = len(segment.label)
+        # frames_per_char = normalized_spectrogram.shape[1] // num_chars
+        # phone_chars=['s','S','Z','z','X','x','Ÿ'] #'Ã',
 
-        # Find positions of the phone characters in the word
-        phone_positions = [i for i, char in enumerate(segment.label) if char in phone_chars]
-        for position in phone_positions:
-            char_start_frame = position * frames_per_char
-            char_end_frame = (position + 1) * frames_per_char
-            frames_with_phone.append((char_start_frame,char_end_frame))
+        # # Find positions of the phone characters in the word
+        # phone_positions = [i for i, char in enumerate(segment.label) if char in phone_chars]
+        # for position in phone_positions:
+        #     char_start_frame = position * frames_per_char
+        #     char_end_frame = (position + 1) * frames_per_char
+        #     frames_with_phone.append((char_start_frame,char_end_frame))
 
         """APProach 1 see twist"""    
-        # phones = self.find_pairs(segment,self.phones)
-        # scaling=24000/44100
-        # hop_length = int(self.mfcc_dict["hop_size"] * segment.sample_rate)        
-        # for p in phones:
-        #     # Adjust phone start and end times relative to the word start (in seconds)
-        #     frame_start = abs(int(((p.start_time - segment.start_time)*scaling) / hop_length))
-        #     frame_end = abs(int(((p.end_time - segment.start_time)*scaling) / hop_length))
-        #     frames_with_phone.append((frame_start,frame_end))
+        phones = self.find_pairs(segment,self.phones)
+        scaling=24000/44100
+        hop_length = int(self.mfcc_dict["hop_size"] * segment.sample_rate)        
+        for p in phones:
+            # Adjust phone start and end times relative to the word start (in seconds)
+            frame_start = abs(int(((p.start_time - segment.start_time)*scaling) / hop_length))
+            frame_end = abs(int(((p.end_time - segment.start_time)*scaling) / hop_length))
+            frames_with_phone.append((frame_start,frame_end))
 
 
         #print(normalized_spectrogram.shape)
+        #resized_mel = cv2.resize(normalized_spectrogram, (224, 224), interpolation=cv2.INTER_LINEAR)
+
         resized_mel = self.extract_and_resize_mfcc(normalized_spectrogram, frames_with_phone, target_size=(self.mfcc_dict["target_length"], self.mfcc_dict["target_length"]))
         #print(resized_mel.shape)
         
@@ -225,16 +228,16 @@ class AudioSegmentDataset(Dataset):
                     phones_list.append(phone)
         return  phones_list
     
+# Define a function to process the dataset and save it
+def process_and_save_dataset(words_segments,phones_segments, output_file):
+    """
+    Processes all items in the dataset and saves the processed objects and labels to a .pkl file.
 
-
-if __name__ == "__main__":
-
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
-    
-    # words_segments = loader.create_dataclass_words()
-    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
+    Parameters:
+    - dataset: The dataset to process.
+    - output_file: The path to the output .pkl file.
+    """
+    processed_data = []
 
     mfcc_dim={
         "n_mfcc":112, 
@@ -246,7 +249,58 @@ if __name__ == "__main__":
     }
     # Create dataset 
     segments_test = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= False)
-    img = plt.imshow(segments_test[0][0].squeeze(0).numpy(), aspect='auto', origin='lower', cmap='plasma')
-    plt.show()
+
+    print("Processing dataset...")
+    for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
+        try:
+            processed_object, label = segments_test[idx]
+            processed_data.append((processed_object.numpy(), label))  # Save as a tuple
+        except Exception as e:
+            print(f"Error processing item {idx}: {e}")
+    segments_test = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= True)
+    print("Processing dataset...")
+    for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
+        try:
+            processed_object, label = segments_test[idx]
+            processed_data.append((processed_object.numpy(), label))  # Save as a tuple
+        except Exception as e:
+            print(f"Error processing item {idx}: {e}")
+
+    print("Processing dataset...")
+    for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
+        try:
+            processed_object, label = segments_test[idx]
+            processed_data.append((processed_object.numpy(), label))  # Save as a tuple
+        except Exception as e:
+            print(f"Error processing item {idx}: {e}")
+
+    print(f"Saving processed data to {output_file}...")
+    with open(output_file, 'wb') as f:
+        pickle.dump(processed_data, f)
+
+    print("Processing and saving complete!")
+
+if __name__ == "__main__":
+
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
+    
+    # words_segments = loader.create_dataclass_words()
+    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+
+    # mfcc_dim={
+    #     "n_mfcc":112, 
+    #     "n_mels":128, 
+    #     "frame_size":0.025, 
+    #     "hop_size":0.005, 
+    #     "n_fft":2048,
+    #     "target_length": 224
+    # }
+    # # Create dataset 
+    # segments_test = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= False)
+    output_file = "processed_dataset.pkl"  # Specify the output file name
+    process_and_save_dataset(words_segments,phones_segments, output_file)
+
     
     

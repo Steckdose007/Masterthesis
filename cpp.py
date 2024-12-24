@@ -109,8 +109,8 @@ def get_cppplots_per_speaker_and_disorder(words_segments,phones = None):
     for word in words_segments:
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         #print(filename1)
-        #extracted = extract_phone_segments(word)
-        cpp_peak = cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
+        extracted = extract_phone_segments(word)
+        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
         if word.label_path == "sigmatism":
             sigmatism.append((20 * np.log10(cpp_peak)))
         else:
@@ -140,8 +140,8 @@ def get_cppplots_per_speaker_and_disorder(words_segments,phones = None):
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         if(word.label_path == "sigmatism"):
             filename1 = filename1.replace("_sig", "")
-        #extracted = extract_phone_segments(word)
-        cpp_peak = cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
+        extracted = extract_phone_segments(word)
+        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
         data.append({'Speaker': filename1, 'Word': word.label, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
 
     df = pd.DataFrame(data)

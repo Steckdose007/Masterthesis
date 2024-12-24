@@ -6,132 +6,122 @@ from model import CNNMFCC  , initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset 
 import optuna
-from optuna.visualization import plot_param_importances,plot_param_importances
+from optuna.visualization import plot_param_importances,plot_parallel_coordinate
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from collections import defaultdict
 import os
+from  Dataloader_fixedlist import FixedListDataset
 import numpy as np
+from optuna.pruners import MedianPruner
+import pickle
+import pandas as pd
 # Global dataset variable
-global segments_train, segments_val, phones_segments
-# Load the dataset once
-def split_list_after_speaker(words_segments):
-    # Group word segments by speaker
-    speaker_to_segments = defaultdict(list)
-    for segment in words_segments:
-        speaker = os.path.basename(segment.path).replace('_sig', '')
-        speaker_to_segments[speaker].append(segment)
-    # Get a list of unique speakers
-    speakers = list(speaker_to_segments.keys())
-    #print("number speakers: ",np.shape(speakers))
-    # Split speakers into training and testing sets
-    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
-    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
-
-    # Collect word segments for each split
-    segments_trainn = []
-    segments_testn = []
-    segments_valn = []
-    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
-
-    for speaker in speakers_train:
-        segments_trainn.extend(speaker_to_segments[speaker])
-    for speaker in speakers_val:
-        segments_valn.extend(speaker_to_segments[speaker])
-    for speaker in speakers_test:
-        segments_testn.extend(speaker_to_segments[speaker])
-
-    return segments_trainn, segments_valn, segments_testn
 
 def prepare_dataset():
-    global segments_train, segments_val, phones_segments
-    loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
-    segments_train1, segments_val1, segments_test = split_list_after_speaker(words_segments)
-    print(f"Number of word segments in train: {len(segments_train1)}, val: {len(segments_val1)}")
-    mfcc_dim={
-        "n_mfcc":128, 
-        "n_mels":128, 
-        "frame_size":0.025, 
-        "hop_size":0.005, 
-        "n_fft":2048,
-        "target_length": 224
-    }
+    with open("segments_train_Attention1.pkl", "rb") as f:
+        data = pickle.load(f)
+    with open("segments_val_Attention1.pkl", "rb") as f:
+        data1 = pickle.load(f)
     # Create dataset 
-    segments_val = AudioSegmentDataset(segments_val1, phones_segments, mfcc_dim, augment= False)
-    segments_train = AudioSegmentDataset(segments_train1, phones_segments, mfcc_dim, augment = True)
+    segments_train = FixedListDataset(data)
+    segments_val = FixedListDataset(data1)
+
     
     return segments_train,segments_val
 
 # Define objective function for Optuna
 def objective(trial):
-    global segments_train, segments_val, phones_segments
-
-    # Define search space
+    # ===== Hyperparameters to tune =====
     gamma = trial.suggest_float("gamma", 0.5, 0.99)
     step_size = trial.suggest_int("step_size", 5, 50)
-    learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)  # Use log=True for logarithmic scale
+    learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
-    # Device configuration
+    optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
+    
+    # (Optional) If using SGD, tune momentum as well
+    if optimizer_name == "SGD":
+        momentum = trial.suggest_float("momentum", 0.0, 0.95)
+    else:
+        momentum = 0.0  # Not used, but defined for clarity
+
+    # ===== Device configuration =====
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # ===== Data Loaders (example) =====
+    # Assuming you have already defined `segments_train`, `segments_val`
+    # which are instances of some Dataset. 
+    segments_train, segments_val = prepare_dataset()
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
-    # Define model
-    num_classes = 2  # Change as needed
-    input_channels = 1
-    model = initialize_mobilenet(num_classes, input_channels).to(device)    
-    model.to(device)
 
-    # Loss and optimizer
+    # ===== Initialize model =====
+    # Example: a simple MobileNet or any other model
+    num_classes = 2
+    input_channels = 1
+    model = initialize_mobilenet(num_classes, input_channels).to(device)
+    
+    # ===== Define loss and optimizer =====
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    
+    if optimizer_name == "SGD":
+        optimizer = optim.SGD(model.parameters(), 
+                              lr=learning_rate, 
+                              momentum=momentum)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Learning rate scheduler
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
-    # Training loop
-    num_epochs = 1
+
+    # ===== Training loop =====
+    num_epochs = 100  
     for epoch in range(num_epochs):
+        # --- Train ---
         model.train()
-        running_loss = 0.0
-        correct = 0
-        total = 0
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
+
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+        
         # Step the scheduler at the end of each epoch
         scheduler.step()
-        #     # Track accuracy and loss
-        #     _, predicted = torch.max(outputs.data, 1)
-        #     total += labels.size(0)
-        #     correct += (predicted == labels).sum().item()
-        #     running_loss += loss.item()
 
-        # train_loss = running_loss / len(train_loader)
-        # train_accuracy = correct / total
+        # --- Validation ---
+        model.eval()
+        val_loss = 0.0
+        val_correct = 0
+        val_total = 0
+        
+        with torch.no_grad():
+            for val_inputs, val_labels in val_loader:
+                val_inputs, val_labels = val_inputs.to(device), val_labels.to(device)
+                val_outputs = model(val_inputs)
+                
+                loss = criterion(val_outputs, val_labels)
+                val_loss += loss.item()
 
-    # Evaluate on test set
-    model.eval()
-    test_loss = 0.0
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            test_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+                _, predicted = torch.max(val_outputs.data, 1)
+                val_total += val_labels.size(0)
+                val_correct += (predicted == val_labels).sum().item()
 
-    test_loss = test_loss / len(val_loader)
-    test_accuracy = correct / total
+        # Compute average validation loss and accuracy
+        val_loss /= len(val_loader)
+        val_accuracy = val_correct / val_total
 
-    # Report test accuracy as the objective to optimize
-    return test_accuracy
+        # Report validation loss to Optuna
+        trial.report(val_loss, step=epoch)
+
+        # Optional: If you want to prune based on validation loss
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+
+    # Return final validation loss (or negative accuracy if you want to maximize accuracy)
+    return val_loss
 
 def optimize_with_progress(study, objective, n_trials):
     with tqdm(total=n_trials) as pbar:
@@ -142,11 +132,10 @@ def optimize_with_progress(study, objective, n_trials):
 
 
 if __name__ == "__main__":
-    segments_train,segments_val = prepare_dataset()
     # Create Optuna study
-    study = optuna.create_study(direction='maximize')
+    study = optuna.create_study(direction='minimize', pruner=MedianPruner())
     # Optimize 
-    optimize_with_progress(study, objective, n_trials=2)    # Print best trial
+    optimize_with_progress(study, objective, n_trials=50)    
     print("Best trial:")
     trial = study.best_trial
     print(f"  Accuracy: {trial.value}")
@@ -162,6 +151,22 @@ if __name__ == "__main__":
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.show()
-    param_importance_plot = plot_param_importances(study)
-    param_importance_plot.show()
+    fig.write_image("param_importances_Approach1.png")
+    fig1 = plot_parallel_coordinate(study,target_name="validation loss")
+    fig1.write_image("plot_parallel_coordinate_Approach1.png")
+
+    trials_data = []
+    for t in study.trials:
+        row = {
+            "trial_number": t.number,
+            "value": t.value,
+            "state": t.state.name,  # e.g., "COMPLETE", "PRUNED", etc.
+        }
+        # Add each hyperparameter in t.params
+        row.update(t.params)
+        trials_data.append(row)
+
+    df = pd.DataFrame(trials_data)
+    
+    # Save to CSV
+    df.to_csv("all_trials_results_Attention1.csv", index=False)

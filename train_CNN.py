@@ -4,15 +4,17 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset 
+from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
 import datetime
 import os
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  
 from collections import defaultdict
 import librosa
+from Dataloader_fixedlist import FixedListDataset
 from torch.nn.functional import interpolate
 #from torchsummary import summary
 
@@ -150,40 +152,52 @@ def split_list_after_speaker(words_segments):
 
 
 if __name__ == "__main__":
-    # Load your dataset
-    loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
+    # # Load your dataset
+    # loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
-    # Load preprocessed audio segments from a pickle file
-    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+    # # Load preprocessed audio segments from a pickle file
+    # phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
 
-    print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
-    # Set target length for padding/truncation
-    # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
-    target_length_24kHz_MFCC = int(224)#data augmentstion already done and number of frames.
-    target_length = target_length_24kHz_MFCC
+    # print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
+    # # Set target length for padding/truncation
+    # # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
+    # target_length_24kHz_MFCC = int(224)#data augmentstion already done and number of frames.
+    # target_length = target_length_24kHz_MFCC
 
+
+    # mfcc_dim={
+    #     "n_mfcc":n_mfcc, 
+    #     "n_mels":128, 
+    #     "frame_size":0.025, 
+    #     "hop_size":0.005, 
+    #     "n_fft":2048,
+    #     "target_length": 224
+    # }
+    # Create dataset 
+    # segments_val = AudioSegmentDataset(segments_val,phones_segments, mfcc_dim, augment= False)
+    # segments_test = AudioSegmentDataset(segments_test,phones_segments, mfcc_dim, augment= False)
+    # segments_train = AudioSegmentDataset(segments_train,phones_segments, mfcc_dim, augment = True)
+    #process_and_save_dataset(segments_train,phones_segments, "segments_train_Attention1.pkl")
+    #process_and_save_dataset(segments_val,phones_segments, "segments_val_Attention1.pkl")
+    #process_and_save_dataset(segments_test,phones_segments, "segments_test_Attention1.pkl")
     # Hyperparameters
     n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
     learning_rate = 0.00001
     num_epochs = 50
-    batch_size = 16
-
-    mfcc_dim={
-        "n_mfcc":n_mfcc, 
-        "n_mels":128, 
-        "frame_size":0.025, 
-        "hop_size":0.005, 
-        "n_fft":2048,
-        "target_length": 224
-    }
+    batch_size = 32
+    with open("segments_train_Attention1.pkl", "rb") as f:
+        data = pickle.load(f)
+    with open("segments_val_Attention1.pkl", "rb") as f:
+        data1 = pickle.load(f)
     # Create dataset 
-    segments_val = AudioSegmentDataset(segments_val,phones_segments, mfcc_dim, augment= False)
-    segments_train = AudioSegmentDataset(segments_train,phones_segments, mfcc_dim, augment = True)
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
+    segments_train = FixedListDataset(data)
+    segments_val = FixedListDataset(data)
+
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8)
 
 
     # Initialize model, loss function, and optimizer

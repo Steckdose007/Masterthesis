@@ -37,3 +37,17 @@ phone__16kHz.pkl
 phone__24kHz.pkl
 phones__24kHz.pkl
 words_atleast2048long_16kHz.pkl
+phone_atleast2048long_16kHz.pkl
+segments_train.pkl
+segments_val.pkl
+segments_test.pkl
+processed_dataset.pkl
+segments_train_Attention1.pkl
+segments_test_Attention1.pkl
+segments_val_Attention1.pkl
+segments_train_Attention2.pkl
+segments_test_Attention2.pkl
+segments_val_Attention2.pkl
+segments_train_normalmel.pkl
+segments_test_normalmel.pkl
+segments_val_normalmel.pkl
