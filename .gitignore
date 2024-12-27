@@ -51,3 +51,6 @@ segments_val_Attention2.pkl
 segments_train_normalmel.pkl
 segments_test_normalmel.pkl
 segments_val_normalmel.pkl
+segments_train_mfcc.pkl
+segments_test_mfcc.pkl
+segments_val_mfcc.pkl

@@ -52,10 +52,12 @@ class AudioSegmentDataset(Dataset):
             label = 1
         if self.augment and audio_data.size >= 2048:  # 80% chance of augmentation
             audio_data = apply_augmentation(audio_data, segment.sample_rate)
-            
+        #=========uncomment if dataloader should make mfcc=======================   
         #mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
         #                                   frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         #normalized_mfcc = self.normalize_mfcc(mfcc)
+
+        #=========uncomment if dataloader should make melspectogram=======================   
         normalized_spectrogram = self.compute_melspectogram_features(audio_data,segment.sample_rate, n_mels=self.mfcc_dict["n_mels"],
                                            frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
         
@@ -85,13 +87,11 @@ class AudioSegmentDataset(Dataset):
             frame_end = abs(int(((p.end_time - segment.start_time)*scaling) / hop_length))
             frames_with_phone.append((frame_start,frame_end))
 
-
-        #print(normalized_spectrogram.shape)
-        #resized_mel = cv2.resize(normalized_spectrogram, (224, 224), interpolation=cv2.INTER_LINEAR)
-
+        """In case of mfcc"""
+        #resized_mel = cv2.resize(normalized_mfcc, (224, 224), interpolation=cv2.INTER_LINEAR)
+        """Version with resizing and extraction RIO"""
         resized_mel = self.extract_and_resize_mfcc(normalized_spectrogram, frames_with_phone, target_size=(self.mfcc_dict["target_length"], self.mfcc_dict["target_length"]))
-        #print(resized_mel.shape)
-        
+        """Version with padding"""
         #padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
         
         # Convert to PyTorch tensor and add channel dimension for CNN
@@ -257,22 +257,22 @@ def process_and_save_dataset(words_segments,phones_segments, output_file):
             processed_data.append((processed_object.numpy(), label))  # Save as a tuple
         except Exception as e:
             print(f"Error processing item {idx}: {e}")
-    segments_test = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= True)
-    print("Processing dataset...")
-    for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
-        try:
-            processed_object, label = segments_test[idx]
-            processed_data.append((processed_object.numpy(), label))  # Save as a tuple
-        except Exception as e:
-            print(f"Error processing item {idx}: {e}")
+    # segments_test = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= True)
+    # print("Processing dataset...")
+    # for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
+    #     try:
+    #         processed_object, label = segments_test[idx]
+    #         processed_data.append((processed_object.numpy(), label))  # Save as a tuple
+    #     except Exception as e:
+    #         print(f"Error processing item {idx}: {e}")
 
-    print("Processing dataset...")
-    for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
-        try:
-            processed_object, label = segments_test[idx]
-            processed_data.append((processed_object.numpy(), label))  # Save as a tuple
-        except Exception as e:
-            print(f"Error processing item {idx}: {e}")
+    # print("Processing dataset...")
+    # for idx in tqdm(range(len(segments_test))):  # Use tqdm for progress bar
+    #     try:
+    #         processed_object, label = segments_test[idx]
+    #         processed_data.append((processed_object.numpy(), label))  # Save as a tuple
+    #     except Exception as e:
+    #         print(f"Error processing item {idx}: {e}")
 
     print(f"Saving processed data to {output_file}...")
     with open(output_file, 'wb') as f:

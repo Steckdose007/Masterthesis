@@ -19,9 +19,9 @@ import pandas as pd
 # Global dataset variable
 
 def prepare_dataset():
-    with open("segments_train_Attention1.pkl", "rb") as f:
+    with open("segments_train_mfcc.pkl", "rb") as f:
         data = pickle.load(f)
-    with open("segments_val_Attention1.pkl", "rb") as f:
+    with open("segments_val_mfcc.pkl", "rb") as f:
         data1 = pickle.load(f)
     # Create dataset 
     segments_train = FixedListDataset(data)
@@ -75,7 +75,7 @@ def objective(trial):
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
-    num_epochs = 100  
+    num_epochs = 50  
     for epoch in range(num_epochs):
         # --- Train ---
         model.train()
@@ -144,16 +144,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("best_hyperparameters_Approach1.txt", "w") as f:
+    with open("best_hyperparameters_mfcc.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("param_importances_Approach1.png")
+    fig.write_image("param_importances_mfcc.png")
     fig1 = plot_parallel_coordinate(study,target_name="validation loss")
-    fig1.write_image("plot_parallel_coordinate_Approach1.png")
+    fig1.write_image("plot_parallel_coordinate_mfcc.png")
 
     trials_data = []
     for t in study.trials:
@@ -169,4 +169,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("all_trials_results_Attention1.csv", index=False)
+    df.to_csv("all_trials_results_mfcc.csv", index=False)
