@@ -220,7 +220,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
-    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
