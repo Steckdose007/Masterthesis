@@ -179,8 +179,8 @@ def only_take_s(words_segments):
     probabilities_sigmatism = []
     dataset_length = len(words_segments)
     # 3. Loop through words
-    for i in tqdm(range(100), desc="Processing words"):          
-        segment = words_segments[random.randint(0, dataset_length - 1)]
+    for i in tqdm(range(dataset_length), desc="Processing words"):          
+        segment = words_segments[i]#random.randint(0, dataset_length - 1)]
         audio = segment.audio_data
         label = segment.label_path  # "normal" or "sigmatism"
         
@@ -201,9 +201,7 @@ def only_take_s(words_segments):
 
         # Collect probabilities for those time steps
         s_probs = probs[s_time_steps, s_token_id].cpu().numpy()  # Probabilities of "S" at those time steps
-        """
-        HERE NOCHMAL ARBEITEN WAS SELTSAM SOLL = SPEICHERN WENN KEIN S ERKANNT WIRD
-        """
+    
         # Collect probabilities for those time steps or save 0 if no "S" is predicted
         if len(s_time_steps) > 0:
             s_probs = probs[s_time_steps, s_token_id].cpu().numpy()  # Probabilities of "S" at those time steps
@@ -222,7 +220,7 @@ def only_take_s(words_segments):
     # Prepare data for plotting
     data = [probabilities_normal, probabilities_sigmatism]
     labels = ["Normal", "Sigmatism"]
-
+    print(data)
     # Create the boxplot
     plt.figure(figsize=(8, 6))
     plt.boxplot(data, labels=labels, patch_artist=True, 
@@ -237,6 +235,7 @@ def only_take_s(words_segments):
     # Show the plot
     plt.tight_layout()
     plt.show()
+
 
 
 if __name__ == "__main__":

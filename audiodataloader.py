@@ -465,23 +465,23 @@ def find_pairs(audio_segments,phones_segments):
 
 
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= True, get_buffer=True, downsample=True)
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
-    # sentences_segments = loader.create_dataclass_sentences()
+    sentences_segments = loader.create_dataclass_sentences()
     #loader.save_segments_to_pickle(phones_segments, "phone_atleast2048long_16kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_atleast2048long_16kHz.pkl")
-    # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
+    #phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    #words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
 
-    get_box_length(words_segments)
-    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    get_box_length(sentences_segments)
+    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
     #plotting.plot_mel_spectrogram(normal)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
-    plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
 
    
