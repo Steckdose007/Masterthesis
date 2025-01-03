@@ -244,9 +244,9 @@ if __name__ == "__main__":
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
     model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_16kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("sentences__16kHz.pkl")
     #interfere_segments(words_segments)
-    #area_under_curve(words_segments)
-    only_take_s(words_segments)
+    area_under_curve(words_segments)
+    #only_take_s(words_segments)
 
 
