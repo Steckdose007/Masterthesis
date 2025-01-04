@@ -56,3 +56,4 @@ segments_test_mfcc.pkl
 segments_val_mfcc.pkl
 path
 sentences__16kHz.pkl
+words__16kHz.pkl

@@ -39,7 +39,7 @@ def interfere_whole_wav():
 
 def interfere_segments(words_segments):
     dataset_length = len(words_segments)
-    segment = words_segments[5]#random.randint(0, dataset_length - 1)]
+    segment = words_segments[100]#random.randint(0, dataset_length - 1)]
     audio = segment.audio_data
     print(segment.label)
     print(segment.label_path)
@@ -68,35 +68,35 @@ def interfere_segments(words_segments):
 
 def print_outputs(output,label_word,label_path):
     logits = output[0]  # shape: [time_steps, vocab_size]
-    # """plot heatmap for all character"""
-    # # 1. Convert to numpy array for plotting
-    # logits_np = logits.detach().cpu().numpy()  # shape: (time_steps, vocab_size)
-    # # 2. Plot as a heatmap
-    # plt.figure(figsize=(12, 6))
-    # # We transpose so:
-    # #  - x-axis = time steps
-    # #  - y-axis = vocab indices
-    # # shape becomes (vocab_size, time_steps)
-    # plt.imshow(logits_np.T, aspect='auto', cmap='plasma', origin='lower')
-    # # Get vocabulary tokens
-    # vocab_tokens = processor.tokenizer.convert_ids_to_tokens(range(logits.shape[-1]))
+    """plot heatmap for all character"""
+    # 1. Convert to numpy array for plotting
+    logits_np = logits.detach().cpu().numpy()  # shape: (time_steps, vocab_size)
+    # 2. Plot as a heatmap
+    plt.figure(figsize=(12, 6))
+    # We transpose so:
+    #  - x-axis = time steps
+    #  - y-axis = vocab indices
+    # shape becomes (vocab_size, time_steps)
+    plt.imshow(logits_np.T, aspect='auto', cmap='plasma', origin='lower')
+    # Get vocabulary tokens
+    vocab_tokens = processor.tokenizer.convert_ids_to_tokens(range(logits.shape[-1]))
 
-    # # Number of ticks (this will match vocab_size)
-    # num_vocab = len(vocab_tokens)
+    # Number of ticks (this will match vocab_size)
+    num_vocab = len(vocab_tokens)
 
-    # # Set up the ticks on Y-axis at intervals (be careful with large vocab)
-    # plt.yticks(
-    #     ticks=np.arange(num_vocab),
-    #     labels=vocab_tokens,
-    #     fontsize=6  # might need to reduce font size if it's a large vocab
-    # )
-    # plt.title(f"{label_word} Logits Heatmap with {label_path}")
-    # plt.xlabel("Time Steps")
-    # plt.ylabel("Vocab Index")
-    # plt.colorbar(label="Logit Value")
+    # Set up the ticks on Y-axis at intervals (be careful with large vocab)
+    plt.yticks(
+        ticks=np.arange(num_vocab),
+        labels=vocab_tokens,
+        fontsize=6  # might need to reduce font size if it's a large vocab
+    )
+    plt.title(f"{label_word} Logits Heatmap with {label_path}")
+    plt.xlabel("Time Steps")
+    plt.ylabel("Vocab Index")
+    plt.colorbar(label="Logit Value")
 
-    # plt.tight_layout()
-    # plt.show()
+    plt.tight_layout()
+    plt.show()
 
     """Plot prediction for s over time"""
     # 1. Convert logits -> probabilities
@@ -125,53 +125,63 @@ def print_outputs(output,label_word,label_path):
     plt.show()
 
 def area_under_curve(words_segments):
-    # 2. Initialize lists for areas under curve
-    auc_normal = []
-    auc_sigmatism = []
+    # 1. Initialize dictionaries for AUC values
+    auc_values = {"S": {"normal": [], "sigmatism": []},
+                  "X": {"normal": [], "sigmatism": []},
+                  "Z": {"normal": [], "sigmatism": []}}
+
     dataset_length = len(words_segments)
-    # 3. Loop through words
-    for i in tqdm(range(dataset_length), desc="Processing words"):          
+
+    # 2. Loop through words
+    for i in tqdm(range(dataset_length), desc="Processing words"):
         segment = words_segments[i]
         audio = segment.audio_data
+        if(audio.size <= 2048):
+            continue
         label = segment.label_path  # "normal" or "sigmatism"
-        
-        # 3.1 Preprocess audio
+        word = segment.label.lower() # Word for filtering relevant characters (assumes lowercase)
+        corrected_text = word.replace("ÃŸ", "s").replace("Ã¤", "ä").replace("Ã¼", "ü").replace("Ã¶", "ö")
+        # 2.1 Preprocess audio
         inputs = processor(audio, sampling_rate=16_000, return_tensors="pt", padding=True)
-        
-        # 3.2 Get logits and calculate probabilities
+
+        # 2.2 Get logits and calculate probabilities
         with torch.no_grad():
-            outputs  = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
-        logits = outputs[0]  # [time_steps, vocab_size]
-        probs = F.softmax(logits, dim=-1)  
-        
-        # 3.3 Extract probabilities for "S"
-        s_token_id = processor.tokenizer.convert_tokens_to_ids("s")
-        s_probs = probs[:, s_token_id].cpu().numpy()  # [time_steps]
-        
-    
-        
-        # 3.5 Calculate area under the curve (AUC)
-        auc = np.sum(s_probs)  # Should be 1 because of normalization
-        
-        # 3.6 Store AUC in the corresponding list
-        if label == "normal":
-            auc_normal.append(auc)
-        elif label == "sigmatism":
-            auc_sigmatism.append(auc)
-        else:
-            raise ValueError(f"Unexpected label: {label}")
+            logits = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
+        probs = F.softmax(logits[0], dim=-1)  # [time_steps, vocab_size]
 
-    # 4. Plot results as a bar plot
-    data = [auc_sigmatism, auc_normal]
-    labels = ['Sigmatism', 'Normal']
+        # 2.3 Extract probabilities and calculate AUC for characters present in the word
+        for char in ["s", "x", "z"]:
+            if char in corrected_text:  # Only process if the character is in the word
+                token_id = processor.tokenizer.convert_tokens_to_ids(char)
+                if token_id is None:
+                    raise ValueError(f"Token '{char}' not found in vocabulary.")
 
-    plt.figure(figsize=(8, 6))
-    plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
+                char_probs = probs[:, token_id].cpu().numpy()  # [time_steps]
+                auc = np.sum(char_probs)  # Area under the curve (AUC)
 
-    plt.title("Average Area Under Curve (AUC) for 'S'")
-    plt.ylabel("Normalized AUC")
-    plt.tight_layout()
-    plt.show()
+                # 2.4 Store AUC in the corresponding dictionary
+                if label == "normal":
+                    auc_values[char.upper()]["normal"].append(auc)
+                elif label == "sigmatism":
+                    auc_values[char.upper()]["sigmatism"].append(auc)
+                else:
+                    raise ValueError(f"Unexpected label: {label}")
+
+    # 3. Plot results
+    for char in ["S", "X", "Z"]:
+        normal_aucs = auc_values[char]["normal"]
+        sigmatism_aucs = auc_values[char]["sigmatism"]
+
+        data = [sigmatism_aucs, normal_aucs]
+        labels = ['Sigmatism', 'Normal']
+
+        plt.figure(figsize=(8, 6))
+        plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
+
+        plt.title(f"Average Area Under Curve (AUC) for '{char}'")
+        plt.ylabel("Normalized AUC")
+        plt.tight_layout()
+        plt.show()
 
 def only_take_s(words_segments):
     # 2. Initialize lists for areas under curve
@@ -244,9 +254,9 @@ if __name__ == "__main__":
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
     model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
-    words_segments = loader.load_segments_from_pickle("sentences__16kHz.pkl")
-    #interfere_segments(words_segments)
-    area_under_curve(words_segments)
+    words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
+    interfere_segments(words_segments)
+    #area_under_curve(words_segments)
     #only_take_s(words_segments)
 
 

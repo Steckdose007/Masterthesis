@@ -56,7 +56,7 @@ class AudioSegment:
     path: str # which file it is from
     #phonem_loc : list
 
-#@jit(nopython=True)
+@jit(nopython=True)
 def rolling_std(signal, window_size):
     """
     Compute the rolling standard deviation over a given window size.
@@ -270,17 +270,17 @@ class AudioDataLoader:
                                 ###till here
                                 if(self.downsample):
                                     adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                if(adjusted_segment.size >= 2048):
+                                #if(adjusted_segment.size >= 2048):
                                     #print(adjusted_segment.size)
-                                    self.word_segments.append(
-                                        AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                    end_time=int(word_start+adjusted_end), 
-                                                    audio_data=adjusted_segment, 
-                                                    sample_rate=self.target_sr, 
-                                                    label=word_label,
-                                                    label_path=self.label_path,
-                                                    path = wav_file)
-                                    )
+                                self.word_segments.append(
+                                    AudioSegment(start_time=int(word_start+adjusted_start), 
+                                                end_time=int(word_start+adjusted_end), 
+                                                audio_data=adjusted_segment, 
+                                                sample_rate=self.target_sr, 
+                                                label=word_label,
+                                                label_path=self.label_path,
+                                                path = wav_file)
+                                )
                             # Check if we are past the word "Xylophone"
                             if word_label == self.dividing_word:
                                 dividing_word = True
@@ -465,21 +465,21 @@ def find_pairs(audio_segments,phones_segments):
 
 
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= True, get_buffer=True, downsample=True)
-    #phones_segments = loader.create_dataclass_phones()
-    #words_segments = loader.create_dataclass_words()
-    sentences_segments = loader.create_dataclass_sentences()
-    #loader.save_segments_to_pickle(phones_segments, "phone_atleast2048long_16kHz.pkl")
-    #loader.save_segments_to_pickle(words_segments, "words_atleast2048long_16kHz.pkl")
-    loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
-    #phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
-    #words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= False, get_buffer=True, downsample=True)
+    phones_segments = loader.create_dataclass_phones()
+    words_segments = loader.create_dataclass_words()
+    #sentences_segments = loader.create_dataclass_sentences()
+    loader.save_segments_to_pickle(phones_segments, "phone__16kHz.pkl")
+    loader.save_segments_to_pickle(words_segments, "words__16kHz.pkl")
+    #loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
+    #phones_segments = loader.load_segments_from_pickle("phones__16kHz.pkl")
+    #words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
 
-    get_box_length(sentences_segments)
-    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
+    get_box_length(words_segments)
+    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
-    #plotting.plot_mel_spectrogram(normal)
+    plotting.plot_mel_spectrogram(normal)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
     #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)
