@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet
+from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
@@ -14,9 +14,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm  
 from collections import defaultdict
 import librosa
-from Dataloader_STT import AudioSegmentDataset
 from Dataloader_fixedlist import FixedListDataset
-
 from torch.nn.functional import interpolate
 #from torchsummary import summary
 
@@ -68,7 +66,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
         # Evaluate on the test set
         val_loss, val_acc = evaluate_model(model, test_loader, criterion)
         val_losses.append(val_loss)
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Val Loss: {val_loss:.4f}, Val Accuracy: {val_acc:.4f}")
+        print(f"Epoch [{epoch + 1}/{num_epochs}], Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
 
         if val_loss < best_loss:
             best_loss = val_loss
@@ -158,14 +156,21 @@ def split_list_after_speaker(words_segments):
 
 
 if __name__ == "__main__":
-    
+    #============================create fixedlists ==========================================
+    # # Before change what you want to have in the dataloader
+    # #for train put every word in there 3 times
+    # # Load your dataset
     # loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
     # # Load preprocessed audio segments from a pickle file
-    # words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
+    # phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
     # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
     # print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
     
+    # #process_and_save_dataset(segments_train,phones_segments, "segments_train_mfcc.pkl")
+    # process_and_save_dataset(segments_val,phones_segments, "segments_val_mfcc.pkl")
+    # process_and_save_dataset(segments_test,phones_segments, "segments_test_mfcc.pkl")
 
     # Hyperparameters
     mfcc_dim={
@@ -179,30 +184,30 @@ if __name__ == "__main__":
     Hyperparameters={
         "gamma": 0.8765847276000667,
         "step_size": 35,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0007828073581569078,
         "batch_size": 16,
         "momentum": 0.11750923074076126,
     }
     n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  #  binary classification for sigmatism
     learning_rate = Hyperparameters["learning_rate"]
-    num_epochs = 25
+    num_epochs = 100
     batch_size = Hyperparameters["batch_size"]
     step_size = Hyperparameters["step_size"]
     gamma=Hyperparameters["gamma"]
     momentum=Hyperparameters["momentum"]
 
     #============================Load fixed lists =====================================
-    with open("STT_list_Interpolate_2D_train.pkl", "rb") as f:
+    with open("segments_train_normalmel.pkl", "rb") as f:
         train = pickle.load(f)
-    with open("STT_list_Interpolate_2D_val.pkl", "rb") as f:
+    with open("segments_val_normalmel.pkl", "rb") as f:
         val = pickle.load(f)
     # Create dataset 
     segments_train = FixedListDataset(train)
     segments_val = FixedListDataset(val)
 
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)#,num_workers=8)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)#,num_workers=8)
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8)
 
 
     # Initialize model, loss function, and optimizer
@@ -210,16 +215,16 @@ if __name__ == "__main__":
     print("Device: ",device)
     num_classes = 2  # Change as needed
     input_channels = 1  #input is grayscale spectrogram
-    #model = initialize_mobilenet(num_classes, input_channels).to(device)
-    model = modelSST(num_classes).to(device)  
+    model = initialize_mobilenet(num_classes, input_channels).to(device)
+    #model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)# L2 Regularization (Weight Decay)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
-    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"CNN224x224_STT_{timestamp}.pth"
+    best_model_filename = f"MobilenetV2_mel_{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)

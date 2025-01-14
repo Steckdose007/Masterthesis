@@ -50,7 +50,7 @@ def interfere_segments(words_segments):
         logits  = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
     print("output",logits.shape)
     print_outputs(logits,segment.label,segment.label_path)
-
+    print("logits: ",type(logits))
     probs = F.softmax(logits, dim=-1)
     s_token_id = processor.tokenizer.convert_tokens_to_ids("S")
     s_probs = probs[0, :, s_token_id]

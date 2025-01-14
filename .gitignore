@@ -37,3 +37,9 @@ phone__16kHz.pkl
 phone__24kHz.pkl
 phones__24kHz.pkl
 words_atleast2048long_16kHz.pkl
+words__16kHz.pkl
+DeeplearningPaper/App.mp4
+ANKI_Thesis_Template
+STT_list_Interpolate_2D_test.pkl
+STT_list_Interpolate_2D_train.pkl
+STT_list_Interpolate_2D_val.pkl
