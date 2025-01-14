@@ -4,22 +4,24 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D , CNNMFCC,initialize_mobilenet
 from audiodataloader import AudioDataLoader, AudioSegment
-from Dataloader_pytorch import AudioSegmentDataset 
+from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
 import datetime
 import os
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm  
 from collections import defaultdict
 import librosa
+from Dataloader_fixedlist import FixedListDataset
 from torch.nn.functional import interpolate
-from torchsummary import summary
+#from torchsummary import summary
 
 def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
     train_losses = []
-    test_losses = []
+    val_losses = []
     best_test_acc = 0
     
     for epoch in range(num_epochs):
@@ -62,20 +64,19 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
         # Step the scheduler
         #scheduler.step()
         # Evaluate on the test set
-        test_loss, test_acc = evaluate_model(model, test_loader, criterion)
-        if test_acc > best_test_acc:
-            best_test_acc = test_acc
-        test_losses.append(test_loss)
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}")
+        val_loss, val_acc = evaluate_model(model, test_loader, criterion)
+        val_losses.append(val_loss)
+        print(f"Epoch [{epoch + 1}/{num_epochs}], Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
 
-        if test_loss < best_loss:
-            best_loss = test_loss
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_test_acc = val_acc
             #best_model_filename = os.path.join('models', best_model_filename)
             torch.save(model.state_dict(), os.path.join('models', best_model_filename))
             print(f"Best model saved with test accuracy {best_loss:.4f} as {best_model_filename}")
     
     # Plot train and test losses
-    plot_losses(train_losses, test_losses,best_model_filename,best_test_acc)
+    plot_losses(train_losses, val_losses,best_model_filename,best_test_acc)
 
 def evaluate_model(model, test_loader, criterion):
     model.eval()
@@ -111,16 +112,21 @@ def evaluate_model(model, test_loader, criterion):
 def plot_losses(train_losses, test_losses,best_model_filename,best_test_acc):
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label="Train Loss")
-    plt.plot(test_losses, label="Test Loss")
+    plt.plot(test_losses, label="Val Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Train and Test Loss over Epochs with Acc of: "+str(best_test_acc))
+    plt.title("Train and Val Loss over Epochs with Acc of: "+str(best_test_acc))
     plt.legend()
     plt.grid(True)
     plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
     plt.show()
 
 def split_list_after_speaker(words_segments):
+    """
+    Groups words to their corresponding speakers and creates train test val split
+    Returns:
+    Train test val split with speakers
+    """
     # Group word segments by speaker
     speaker_to_segments = defaultdict(list)
     for segment in words_segments:
@@ -150,56 +156,75 @@ def split_list_after_speaker(words_segments):
 
 
 if __name__ == "__main__":
-    # Load your dataset
-    loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
+    #============================create fixedlists ==========================================
+    # # Before change what you want to have in the dataloader
+    # #for train put every word in there 3 times
+    # # Load your dataset
+    # loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
-    # Load preprocessed audio segments from a pickle file
-    phones_segments = loader.load_segments_from_pickle("phones_atleast2048long_24kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
-
-    print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
-    # Set target length for padding/truncation
-    # maximum word lenght is 65108 and because a strechtching of up to 120% can appear the buffer hast to be that big.
-    target_length_24kHz_MFCC = int(224)#data augmentstion already done and number of frames.
-    target_length = target_length_24kHz_MFCC
+    # # Load preprocessed audio segments from a pickle file
+    # phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+    # print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
+    
+    # #process_and_save_dataset(segments_train,phones_segments, "segments_train_mfcc.pkl")
+    # process_and_save_dataset(segments_val,phones_segments, "segments_val_mfcc.pkl")
+    # process_and_save_dataset(segments_test,phones_segments, "segments_test_mfcc.pkl")
 
     # Hyperparameters
-    n_mfcc = 112 # Number of MFCC coefficients
-    num_classes = 2  # Adjust based on your classification task (e.g., binary classification for sigmatism)
-    learning_rate = 0.00001
-    num_epochs = 50
-    batch_size = 16
-
     mfcc_dim={
-        "n_mfcc":n_mfcc, 
+        "n_mfcc":128, 
         "n_mels":128, 
         "frame_size":0.025, 
         "hop_size":0.005, 
         "n_fft":2048,
         "target_length": 224
     }
+    Hyperparameters={
+        "gamma": 0.8765847276000667,
+        "step_size": 35,
+        "learning_rate": 0.0007828073581569078,
+        "batch_size": 16,
+        "momentum": 0.11750923074076126,
+    }
+    n_mfcc = 112 # Number of MFCC coefficients
+    num_classes = 2  #  binary classification for sigmatism
+    learning_rate = Hyperparameters["learning_rate"]
+    num_epochs = 100
+    batch_size = Hyperparameters["batch_size"]
+    step_size = Hyperparameters["step_size"]
+    gamma=Hyperparameters["gamma"]
+    momentum=Hyperparameters["momentum"]
+
+    #============================Load fixed lists =====================================
+    with open("segments_train_normalmel.pkl", "rb") as f:
+        train = pickle.load(f)
+    with open("segments_val_normalmel.pkl", "rb") as f:
+        val = pickle.load(f)
     # Create dataset 
-    segments_val = AudioSegmentDataset(segments_val,phones_segments, mfcc_dim, augment= False)
-    segments_train = AudioSegmentDataset(segments_train,phones_segments, mfcc_dim, augment = True)
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
+    segments_train = FixedListDataset(train)
+    segments_val = FixedListDataset(val)
+
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8)
 
 
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
     num_classes = 2  # Change as needed
-    input_channels = 1  # Since your input is grayscale spectrogram
+    input_channels = 1  #input is grayscale spectrogram
     model = initialize_mobilenet(num_classes, input_channels).to(device)
     #model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=24, gamma=0.7)
+    #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"Mobilenet_Attention_Approach2_{timestamp}.pth"
+    best_model_filename = f"MobilenetV2_mel_{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
