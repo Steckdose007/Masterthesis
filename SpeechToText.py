@@ -179,7 +179,7 @@ def area_under_curve(words_segments):
         plt.boxplot(data, labels=labels, patch_artist=True, notch=True, showmeans=True)
 
         plt.title(f"Average Area Under Curve (AUC) for '{char}'")
-        plt.ylabel("Normalized AUC")
+        plt.ylabel("AUC")
         plt.tight_layout()
         plt.show()
 
