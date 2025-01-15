@@ -43,3 +43,8 @@ ANKI_Thesis_Template
 STT_list_Interpolate_2D_test.pkl
 STT_list_Interpolate_2D_train.pkl
 STT_list_Interpolate_2D_val.pkl
+sentences__16kHz.pkl
+to
+data_lists
+words_without_normalization_for_labelingRST.pkl
+words_without_normalization_for_labeling.pkl

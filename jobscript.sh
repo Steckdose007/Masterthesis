@@ -12,4 +12,4 @@ unset SLURM_EXPORT_ENV
 module load python/3.10-anaconda
 source activate train
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/
-python train_CNN.py
+python Dataloader_STT.py

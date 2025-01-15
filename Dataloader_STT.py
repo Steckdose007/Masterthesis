@@ -20,6 +20,7 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
+import plotting
 
 
 
@@ -115,7 +116,12 @@ def split_list_after_speaker(words_segments):
     # Group word segments by speaker
     speaker_to_segments = defaultdict(list)
     for segment in words_segments:
-        speaker = os.path.basename(segment.path).replace('_sig', '')
+        normalized_path = segment.path.replace("\\", "/")
+        #print(normalized_path)
+        _, filename = os.path.split(normalized_path)
+        #print(filename)
+        speaker = filename.replace('_sig', '')
+        #print(speaker)
         speaker_to_segments[speaker].append(segment)
     # Get a list of unique speakers
     speakers = list(speaker_to_segments.keys())
@@ -140,15 +146,87 @@ def split_list_after_speaker(words_segments):
     return segments_train, segments_val, segments_test
 
 
+def find_pairs(audio_segments,phones_segments,index):
+    """
+    Takes a word which can be choosen by indices and searches for the correspüonding word in sig or normal. 
+    Can also find all corresponding phones for a word.
+    """
+    sigmatism = None
+    normal = None
+    phones =["z","s","Z","S","ts"]
+    phones_list_normal = []
+    phones_list_sigmatism = []
+    segment = audio_segments[index]###choose word here
+    
+    if segment.label_path == "sigmatism":
+        print("It is Sigmatism")
+        sigmatism = segment
+        #get path from other file with normal speech
+        matching_path = segment.path.replace("sigmatism", "normal")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base[:-4]}{ext}"
+        print("PATH:",path)
+        for normal in audio_segments:
+            if (normal.label_path == "normal" and
+                normal.label == segment.label and
+                normal.path == path):
+                print("Found normal pair")
+
+                if(phones_segments):
+                    for phone in phones_segments:
+                        if (phone.label_path == "normal" and
+                            phone.label in phones and
+                            phone.path == path and
+                            phone.sample_rate == sigmatism.label):
+                            phones_list_normal.append(phone)
+
+                        if (phone.label_path == "sigmatism" and
+                            phone.label in phones and
+                            phone.path == segment.path and
+                            phone.sample_rate == sigmatism.label):
+                            phones_list_sigmatism.append(phone)
+                    return sigmatism, normal, phones_list_normal, phones_list_sigmatism
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism
+
+    
+    if segment.label_path == "normal":
+        print("It is Normal")
+        normal =segment
+        matching_path = segment.path.replace("normal", "sigmatism")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base}_sig{ext}"
+        for sigmatism in audio_segments:
+            if (sigmatism.label_path == "sigmatism" and
+                sigmatism.label == normal.label and
+                sigmatism.path == path):
+                print("Found sigmatism pair")
+                if(phones_segments):
+                    for normal_phone in phones_segments:
+                        if (normal_phone.label_path == "normal" and
+                            normal_phone.label in phones and
+                            normal_phone.path == normal.path and
+                            normal_phone.sample_rate == sigmatism.label):
+                            phones_list_normal.append(normal_phone)
+
+                        if (normal_phone.label_path == "sigmatism" and
+                            normal_phone.label in phones and
+                            normal_phone.path == path and
+                            normal_phone.sample_rate == sigmatism.label):
+                            phones_list_sigmatism.append(normal_phone)
+                    return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
+
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
     # words_segments = loader.create_dataclass_words()
     # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
-    #phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
+    phones_segments = loader.load_segments_from_pickle("data_lists/phones__24kHz.pkl")
 
+    print(len(words_segments))
     mfcc_dim={
         "n_mfcc":112, 
         "n_mels":128, 
@@ -162,7 +240,11 @@ if __name__ == "__main__":
 
 
     segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
-
+    for i in range(10):
+        sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(segments_test,phones_segments,i*30)
+        #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
+        plotting.plot_mel_spectrogram(sigmatism)
+        plotting.plot_mel_spectrogram(normal)
     # Create dataset 
     output_file = "STT_list_Interpolate_2D_train.pkl"  
     process_and_save_dataset(segments_train, output_file)
@@ -184,5 +266,8 @@ if __name__ == "__main__":
     plt.xlabel("Feature Dimension (Vocab Size)")
     plt.ylabel("Time Steps")
     plt.tight_layout()
+    plt.savefig("LOGITS_INTERPOLATED.png")
+
     plt.show()
+
     

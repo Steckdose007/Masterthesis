@@ -42,10 +42,10 @@ class FixedListDataset(Dataset):
         self.audio_segments = audio_segments
         self.transforms  = transforms.Compose([
                             transforms.ToTensor(),
-                            transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
+                            #transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
                             #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
-                            transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
-                            transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
+                            #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
+                            #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
                             transforms.Normalize(mean=[0.5], std=[0.5])  # Normalize between -1 and 1
 ])
 
