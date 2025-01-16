@@ -9,10 +9,12 @@ import numpy as np
 from sklearn.svm import SVC
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, roc_curve
 import pandas as pd
 import seaborn as sns
+from sklearn.model_selection import train_test_split
+from collections import defaultdict
+import os
 
 ubm = None
 # Apply Hamming window and frame the signal
@@ -320,7 +322,6 @@ def display_results_table(all_results, metric_name='AUC'):
     print(metric_df)
 
 
-
 def compute_metrics(y_true, y_pred, y_pred_proba):
     
     # Recognition Rate (RR) = Accuracy
@@ -340,12 +341,52 @@ def compute_metrics(y_true, y_pred, y_pred_proba):
         'AUC': float(round(AUC, 3))
     }
 
+
+def split_list_after_speaker(words_segments):
+    """
+    Groups words to their corresponding speakers and creates train test val split
+    Returns:
+    Train test val split with speakers
+    """
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        normalized_path = segment.path.replace("\\", "/")
+        #print(normalized_path)
+        _, filename = os.path.split(normalized_path)
+        #print(filename)
+        speaker = filename.replace('_sig', '')
+        #print(speaker)
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
+
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    segments_val = []
+    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+    for speaker in speakers_val:
+        segments_val.extend(speaker_to_segments[speaker])
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+
+    return segments_train, segments_val, segments_test
+
+
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=False)
-    phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words_segments.pkl")
-    sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
+    #phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists\words_normalized_44kHz.pkl")
+    #sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
 
     """get search for best hyperparam"""
     # # Define the parameter search space
@@ -361,11 +402,12 @@ if __name__ == "__main__":
 
 
 
-    segments_train, segments_test = train_test_split(words_segments, random_state=42,test_size=0.20)
-    print(np.shape(segments_train),np.shape(segments_test))
+    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+
+    print(np.shape(segments_train),np.shape(segments_val))
 
     supervectors_train, simplified_supervectors_train, mfccs_train, energys_train, labels_train = get_features(segments_train,energy_bool=True,training=True)#has to be called first to init ubm
-    supervectors_test, simplified_supervectors_test, mfccs_test, energys_test, labels_test = get_features(segments_test,energy_bool=True)
+    supervectors_test, simplified_supervectors_test, mfccs_test, energys_test, labels_test = get_features(segments_val,energy_bool=True)
     padded_mfccs_train,padded_mfccs_test = pad_mfccs(mfccs_train,mfccs_test)#shape(396,23904)
 
     scaler = StandardScaler()
@@ -386,47 +428,47 @@ if __name__ == "__main__":
     descriptions = ['Supervectors', 'SimplifiedSupervectors', 'MFCCs', 'Energy']
     m = []
     """SVM"""
-    for i in range(4):
-        X_train = X[i]
-        X_test =Y[i]
-        y_train =X[4]
-        y_test  =Y[4]
-        # Create and train the SVM with a polynomial kernel
-        svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
-        svm_classifier.fit(X_train, y_train)
-        y_pred = svm_classifier.predict(X_test)
-        #get predicted probabilities
-        svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
-        svm_prob.fit(X_train, y_train)
-        y_pred_proba = svm_prob.predict_proba(X_test)
-
-        # Compute the metrics
-        metrics = compute_metrics(y_test, y_pred, y_pred_proba)
-        print(metrics)
-        m.append(metrics)
-    """ADABOOSTM1"""
     # for i in range(4):
-    #     # Split the data into training and testing sets
     #     X_train = X[i]
     #     X_test =Y[i]
     #     y_train =X[4]
     #     y_test  =Y[4]
-
-    #     # Create and train the AdaBoost classifier with DecisionTree as the base estimator
-    #     base_estimator = DecisionTreeClassifier(max_depth=1)
-    #     ada_classifier = AdaBoostClassifier(estimator=base_estimator, n_estimators=50, random_state=42)
-    #     ada_classifier.fit(X_train, y_train)
-        
-    #     # Predict the class labels
-    #     y_pred = ada_classifier.predict(X_test)
-        
-    #     # Get predicted probabilities for positive class
-    #     y_pred_proba = ada_classifier.predict_proba(X_test)
+    #     # Create and train the SVM with a polynomial kernel
+    #     svm_classifier = SVC(kernel='poly', degree=3, C=1.0, random_state=42)
+    #     svm_classifier.fit(X_train, y_train)
+    #     y_pred = svm_classifier.predict(X_test)
+    #     #get predicted probabilities
+    #     svm_prob = SVC(kernel='poly', degree=3, C=1.0, probability=True)
+    #     svm_prob.fit(X_train, y_train)
+    #     y_pred_proba = svm_prob.predict_proba(X_test)
 
     #     # Compute the metrics
     #     metrics = compute_metrics(y_test, y_pred, y_pred_proba)
-    #     print(f"Metrics for {descriptions[i]}: {metrics}")
+    #     print(metrics)
     #     m.append(metrics)
+    """ADABOOSTM1"""
+    for i in range(4):
+        # Split the data into training and testing sets
+        X_train = X[i]
+        X_test =Y[i]
+        y_train =X[4]
+        y_test  =Y[4]
+
+        # Create and train the AdaBoost classifier with DecisionTree as the base estimator
+        base_estimator = DecisionTreeClassifier(max_depth=1)
+        ada_classifier = AdaBoostClassifier(base_estimator=base_estimator, n_estimators=50, random_state=42)
+        ada_classifier.fit(X_train, y_train)
+        
+        # Predict the class labels
+        y_pred = ada_classifier.predict(X_test)
+        
+        # Get predicted probabilities for positive class
+        y_pred_proba = ada_classifier.predict_proba(X_test)
+
+        # Compute the metrics
+        metrics = compute_metrics(y_test, y_pred, y_pred_proba)
+        print(f"Metrics for {descriptions[i]}: {metrics}")
+        m.append(metrics)
 
 
     df_metrics = pd.DataFrame(m)
