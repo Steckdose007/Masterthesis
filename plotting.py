@@ -72,7 +72,7 @@ def plot_mel_spectrogram(word, phones=None):
     cbar = plt.colorbar(img, ax=axs[1], orientation='vertical', pad=0.01)
     cbar.set_label('Intensity (dB)', rotation=270, labelpad=15)
     #librosa.display.specshow(mel_spectrogram_db, sr=sample_rate, x_axis='time', y_axis='mel', cmap='coolwarm', ax=axs[1])
-    axs[1].set_title(f"MFCC for {word.label} {word.label_path}")
+    axs[1].set_title(f"Mel Specto for {word.label} {word.label_path}")
     axs[1].set_xlabel("Frames")
     axs[1].set_ylabel("Coefficients")
     

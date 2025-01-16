@@ -17,6 +17,8 @@
     ],
     "dividing_word": "Xylophon",
     "folder_path":["Data/normal","Data/sigmatism"],
-    "maximum_word_length": 291694
+    "maximum_word_length": 291694,
+    "train_mean": -1.7384773e-08,
+    "train_std": 0.017505346
   }
   

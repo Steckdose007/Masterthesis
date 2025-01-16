@@ -38,19 +38,24 @@ def interfere_whole_wav():
     # print("Prediction:", predicted_sentences)
 
 def interfere_segments(words_segments):
+    """
+    get prediction from STT for a word at index x
+    the heatmap over time steps and the probability function of s over time steps are plottet. 
+    """
+    index = 5030
     dataset_length = len(words_segments)
-    segment = words_segments[100]#random.randint(0, dataset_length - 1)]
+    segment = words_segments[index]#random.randint(0, dataset_length - 1)]
     audio = segment.audio_data
-    print(segment.label)
-    print(segment.label_path)
+    print("Word: ",segment.label)
+    print("Label: ",segment.label_path)
     #audio = audio.astype(np.float32)
     inputs = processor(audio, sampling_rate=16000, return_tensors="pt", padding=True)
 
     with torch.no_grad():
         logits  = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
-    print("output",logits.shape)
+    #print("output",logits.shape)
     print_outputs(logits,segment.label,segment.label_path)
-    print("logits: ",type(logits))
+    #print("logits: ",type(logits))
     probs = F.softmax(logits, dim=-1)
     s_token_id = processor.tokenizer.convert_tokens_to_ids("S")
     s_probs = probs[0, :, s_token_id]
@@ -67,6 +72,7 @@ def interfere_segments(words_segments):
     print("Prediction:", predicted_sentences)
 
 def print_outputs(output,label_word,label_path):
+    
     logits = output[0]  # shape: [time_steps, vocab_size]
     """plot heatmap for all character"""
     # 1. Convert to numpy array for plotting
@@ -125,6 +131,9 @@ def print_outputs(output,label_word,label_path):
     plt.show()
 
 def area_under_curve(words_segments):
+    """
+    calculates the area under the curve of the prediction of the chars s,x,z over time steps for all words. 
+    """
     # 1. Initialize dictionaries for AUC values
     auc_values = {"S": {"normal": [], "sigmatism": []},
                   "X": {"normal": [], "sigmatism": []},
@@ -253,10 +262,10 @@ if __name__ == "__main__":
     MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
     model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
-    words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
-    interfere_segments(words_segments)
-    #area_under_curve(words_segments)
+    loader = AudioDataLoader()
+    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
+    #interfere_segments(words_segments)
+    area_under_curve(words_segments)
     #only_take_s(words_segments)
 
 

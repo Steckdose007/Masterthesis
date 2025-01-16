@@ -161,14 +161,17 @@ def cpp_calc_and_plot(x, fs, pitch_range, trendline_quefrency_range, cepstrum,pl
     return np.round(peak_value - Y_pred[index_range][peak_index][0], 5)
 
 def get_cppplots_per_speaker_and_disorder(words_segments,phones = None):
-    """CPP for normal and sigmatism over all words"""
+    """CPP for normal and sigmatism 
+    plots for all words
+    plots devided per speaker
+    """
     sigmatism = []
     normal = []
     for word in words_segments:
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         #print(filename1)
         extracted = extract_phone_segments(word)
-        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
+        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 8000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
         if word.label_path == "sigmatism":
             sigmatism.append((20 * np.log10(cpp_peak)))
         else:
@@ -199,7 +202,7 @@ def get_cppplots_per_speaker_and_disorder(words_segments,phones = None):
         if(word.label_path == "sigmatism"):
             filename1 = filename1.replace("_sig", "")
         extracted = extract_phone_segments(word)
-        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
+        cpp_peak = cpp_calc_and_plot(extracted,word.sample_rate,pitch_range=[60, 8000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
         data.append({'Speaker': filename1, 'Word': word.label, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
 
     df = pd.DataFrame(data)
@@ -233,15 +236,15 @@ def get_cppplots_per_speaker_and_disorder(words_segments,phones = None):
         plt.tight_layout()
         plt.show()
 
-def paired_t_test(word_segemtns):
-    """CPP per word per speaker"""
+def paired_t_test(words_segments):
+    """CPP per word per speaker all plottet in a plot to see the correlation"""
     data = []
     for word in words_segments:
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         if(word.label_path == "sigmatism"):
             filename1 = filename1.replace("_sig", "")
         #extracted = extract_phone_segments(word)
-        cpp_peak = cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
+        cpp_peak = cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 8000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = False)
         data.append({'Speaker': filename1, 'Category': word.label_path, 'CPP': (20 * np.log10(cpp_peak))})
 
     df = pd.DataFrame(data)
@@ -339,6 +342,11 @@ def fid_for_two_arrays(array1: np.ndarray, array2: np.ndarray, eps=1e-6) -> floa
     return frechet_distance(mu1, sigma1, mu2, sigma2, eps=eps)  
   
 def fid_plotting(words_segments):
+    """
+    Function to calculate the FID between the normal and sigmatism words per speaker 
+    plots FID for every word in a boxplot
+    plots mean FID per speaker in a boxplot
+    """
     data = []
     for word in words_segments:
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
@@ -437,8 +445,8 @@ def FAD_libary():
 
 if __name__ == "__main__":
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
-    phones_segments = loader.load_segments_from_pickle("phones__24kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("words_atleast2048long_24kHz.pkl")
+    phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists\words_normalized_16kHz.pkl")
     mfcc_dim={
         "n_mfcc":128, 
         "n_mels":128, 
@@ -453,9 +461,9 @@ if __name__ == "__main__":
     eps=1e-6
     fid_value = frechet_distance(mu1, sigma1, mu2, sigma2, eps=eps)
     print(fid_value)
-    FAD_libary()
-    #fid_plotting(words_segments)
+    #FAD_libary() # use method with model
+    fid_plotting(words_segments) 
     #paired_t_test(words_segments)
-    #word = words_segments[0]
-    #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 1000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
+    word = words_segments[0]
+    #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 8000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
     #get_cppplots_per_speaker_and_disorder(words_segments)

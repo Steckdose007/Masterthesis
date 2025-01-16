@@ -42,6 +42,8 @@ import pandas as pd
 from numba import jit
 from scipy.signal import find_peaks
 import timeit 
+from collections import defaultdict
+from sklearn.model_selection import train_test_split
 import plotting
 sum_length =0
 
@@ -72,10 +74,12 @@ def rolling_std(signal, window_size):
 
 
 class AudioDataLoader:
-    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
+    def __init__(self, config_file: str = 'config.json', phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
         self.phone_bool = phone_data
         self.word_bool = word_data
         self.sentence_bool = sentence_data
+        self.mean = 0
+        self.std = 0
         self.word_segments = []
         self.target_sr = 44100
         self.org_sample_rate = 44100
@@ -89,7 +93,7 @@ class AudioDataLoader:
         self.label_path = None
         self.get_buffer = get_buffer
         self.buffer = 0.005 #5ms
-        self.buffer_word = 0.02#window to search for word
+        self.buffer_word = 0.05#window to search for word
         self.load_config(config_file)
         self.files = self.get_audio_csv_file_pairs()
 
@@ -101,6 +105,8 @@ class AudioDataLoader:
             self.sentences = config["sentences"]  
             self.dividing_word = config["dividing_word"]  # Load the dividing word (e.g., "Xylophone")
             self.folder_path = config["folder_path"]
+            self.mean = config["train_mean"]
+            self.std = config["train_std"]
     
     def get_audio_csv_file_pairs(self) -> List[Tuple[str, str]]:
         """
@@ -127,7 +133,7 @@ class AudioDataLoader:
     
             return file_pairs
 
-    def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.0001, label=None):
+    def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.0002, label=None):
         """
         Adjust the start and end of the word based on the rolling standard deviation.
         
@@ -149,24 +155,24 @@ class AudioDataLoader:
         rolling_std_dev = rolling_std(signal, window_size)
 
         """Ploting"""
-        # Plot the original signal and the rolling standard deviation
-        plt.figure(figsize=(14, 6))
-        plt.plot(signal, label='Original Signal', alpha=0.75)
-        plt.plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std Dev', color='orange')
-        plt.title('Original Signal and Rolling Standard Deviation of '+label)
-        plt.xlabel('Sample Index')
-        plt.ylabel('Amplitude')
-        plt.legend()
-        plt.grid()
-        plt.show()
-        # Plot the rolling standard deviation and threshold
-        plt.plot(rolling_std_dev, label='Rolling Std Dev')
-        plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.0007)')
-        plt.title('Rolling Standard Deviation and Threshold')
-        plt.xlabel('Frame')
-        plt.ylabel('Standard Deviation')
-        plt.legend()
-        plt.show()
+        # # Plot the original signal and the rolling standard deviation
+        # plt.figure(figsize=(14, 6))
+        # plt.plot(signal, label='Original Signal', alpha=0.75)
+        # plt.plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std Dev', color='orange')
+        # plt.title('Original Signal and Rolling Standard Deviation of '+label)
+        # plt.xlabel('Sample Index')
+        # plt.ylabel('Amplitude')
+        # plt.legend()
+        # plt.grid()
+        # plt.show()
+        # # Plot the rolling standard deviation and threshold
+        # plt.plot(rolling_std_dev, label='Rolling Std Dev')
+        # plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.0001)')
+        # plt.title('Rolling Standard Deviation and Threshold')
+        # plt.xlabel('Frame')
+        # plt.ylabel('Standard Deviation')
+        # plt.legend()
+        # plt.show()
 
         
         # Find the real start: from the beginning to where the std dev exceeds the threshold
@@ -195,10 +201,8 @@ class AudioDataLoader:
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
         #print(f"Original Sampling Rate: {sample_rate} Hz")
-        # Normalize the audio to the range [-1, 1]
-        # max_amplitude = np.max(np.abs(audio_data))  # Find the maximum absolute amplitude
-        # if max_amplitude > 0:
-        #     audio_data = audio_data / max_amplitude  # Normalize the audio by its maximum value
+        """Normalize the audio Z-Score """
+        audio_data = (audio_data - self.mean) / (self.std)
 
         # Load the CSV and process the word segments
         with open(csv_file, 'r') as file:
@@ -260,29 +264,28 @@ class AudioDataLoader:
                             end_time = start_time + (self.buffer*sample_rate*5) # because the word ends at the beginning of the pause/new word but 5 ms already substracted and then the 5ms on top                
                             if self.word_bool:
                                 ###make rolling std
-                                word_start = (int(word_start-(self.buffer_word*sample_rate*2)))#add the windowing to search for end and beginning
-                                end_time = (int(end_time+(self.buffer_word*sample_rate*7)))
+                                word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
+                                end_time = (int(end_time+(self.buffer_word*sample_rate*3)))
                                 if(word_start <0):
                                     word_start = 0
                                 segment = audio_data[int(word_start):int(end_time)]
                                 adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
                                 #substract/add an extra buffer to really get everything
-                                adjusted_segment = audio_data[(int(word_start+adjusted_start-(self.buffer*sample_rate))):(int(word_start+adjusted_end+(self.buffer*sample_rate)))]
+                                adjusted_segment = audio_data[(int(word_start+adjusted_start-(self.buffer*sample_rate*2))):(int(word_start+adjusted_end+(self.buffer*sample_rate*2)))]
                                 ###till here
                                 if(self.downsample):
                                     adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                #if(adjusted_segment.size >= 2048):
-                                    #print(adjusted_segment.size)
-        
-                                self.word_segments.append(
-                                    AudioSegment(start_time=int(word_start), 
-                                                end_time=int(end_time), 
-                                                audio_data=adjusted_segment, 
-                                                sample_rate=self.target_sr, 
-                                                label=word_label,
-                                                label_path=self.label_path,
-                                                path = wav_file)
-                                )
+                                #words that long have a error
+                                if(adjusted_segment.size <= 1.7*self.target_sr):
+                                    self.word_segments.append(
+                                        AudioSegment(start_time=int(word_start), 
+                                                    end_time=int(end_time), 
+                                                    audio_data=adjusted_segment, 
+                                                    sample_rate=self.target_sr, 
+                                                    label=word_label,
+                                                    label_path=self.label_path,
+                                                    path = wav_file)
+                                    )
                             # Check if we are past the word "Xylophone"
                             if word_label == self.dividing_word:
                                 dividing_word = True
@@ -362,17 +365,17 @@ def get_box_length(words_segments):
     for word_segment in words_segments:
         sum_length += (word_segment.end_time - word_segment.start_time)
         word_length = (word_segment.end_time - word_segment.start_time) / 44100 #hier durch das teilen weil ich die marken abspeichere von dem audio das auf 44100 gesampled wurde.
-        # if word_length > 1.2:
-        #     # Plot the original signal and the rolling standard deviation
-        #     leng = str(int(word_segment.end_time - word_segment.start_time))
-        #     plt.figure(figsize=(14, 6))
-        #     plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
-        #     plt.title(str(word_length) + "    " + word_segment.label + "  "+ word_segment.path + leng)
-        #     plt.xlabel('Time')
-        #     plt.ylabel('Amplitude')
-        #     plt.legend()
-        #     plt.grid()
-        #     plt.show()
+        if word_length > 1.7:
+            # Plot the original signal and the rolling standard deviation
+            leng = str(int(word_segment.end_time - word_segment.start_time))
+            plt.figure(figsize=(14, 6))
+            plt.plot(word_segment.audio_data, label='Original Signal', alpha=0.75)
+            plt.title(str(word_length) + "    " + word_segment.label + "  "+ word_segment.path + leng)
+            plt.xlabel('Time')
+            plt.ylabel('Amplitude')
+            plt.legend()
+            plt.grid()
+            plt.show()
             
         if word_segment.label_path not in word_lengths_by_file:
             word_lengths_by_file[word_segment.label_path] = []
@@ -464,25 +467,23 @@ def find_pairs(audio_segments,phones_segments,index):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
-
-
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= False, sentence_data= False, get_buffer=True, downsample=False)
-    #phones_segments = loader.create_dataclass_phones()
+    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= False, get_buffer=True, downsample=False)
+    phones_segments = loader.create_dataclass_phones()
     words_segments = loader.create_dataclass_words()
     #sentences_segments = loader.create_dataclass_sentences()
-    #loader.save_segments_to_pickle(phones_segments, "phone__16kHz.pkl")
-    loader.save_segments_to_pickle(words_segments, "words_without_normalization_for_labeling.pkl")
+    #loader.save_segments_to_pickle(phones_segments, "phone_normalized_44kHz.pkl")
+    #loader.save_segments_to_pickle(words_segments, "words_normalized_44kHz.pkl")
     #loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
-    #phones_segments = loader.load_segments_from_pickle("data_lists\phones__24kHz.pkl")
-    #words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
+    phones_segments = loader.load_segments_from_pickle("data_lists\phone_without_normalization_44kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_44100Hz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-
+    
     #get_box_length(words_segments)
     
-    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100+i)
+    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
-    #plotting.plot_mel_spectrogram(sigmatism)
+    plotting.plot_mel_spectrogram(sigmatism)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
     #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)

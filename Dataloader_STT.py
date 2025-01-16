@@ -240,6 +240,15 @@ if __name__ == "__main__":
 
 
     segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+    # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+    # train_samples = []
+    # for f in segments_train:
+    #     train_samples.append(f.audio_data)
+    # print(np.shape(train_samples))
+    # train_samples = np.concatenate(train_samples)
+    # train_mean = np.mean(train_samples)
+    # train_std = np.std(train_samples)
+    # print("train_mean:", train_mean, " train_std:", train_std)
     for i in range(10):
         sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(segments_test,phones_segments,i*30)
         #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
