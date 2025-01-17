@@ -8,6 +8,7 @@ from acoustics.cepstrum import inverse_complex_cepstrum
 from acoustics.cepstrum import minimum_phase
 from audiodataloader import AudioDataLoader, AudioSegment
 import os
+import random
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 import pandas as pd
 from scipy import linalg
@@ -352,7 +353,7 @@ def fid_plotting(words_segments):
         filename1 = os.path.splitext(os.path.basename(word.path))[0]  
         if(word.label_path == "sigmatism"):
             filename1 = filename1.replace("_sig", "")
-        audio = fix_audio_length(word.audio_data,int(1.2*24000))
+        audio = fix_audio_length(word.audio_data,int(1.7*16000))
         data.append({'Speaker': filename1, 'Category': word.label_path, 'Audio':audio,'WordLabel': word.label })
 
     df = pd.DataFrame(data)
@@ -403,7 +404,7 @@ def fid_plotting(words_segments):
     df_clean = results_df.dropna(subset=['FID'])
     
     plt.figure(figsize=(6, 6))
-    plt.boxplot(df_clean['FID'])
+    plt.boxplot(df_clean['FID'],patch_artist=True, showmeans=True)
     plt.ylabel("FID (normal vs. sigmatism)")
     plt.title("Distribution of FID Scores Across All Speakers")
     plt.show()
@@ -413,10 +414,170 @@ def fid_plotting(words_segments):
 
     # Make a new boxplot
     plt.figure(figsize=(6, 6))
-    plt.boxplot(speaker_means_df['MeanFID'])
+    plt.boxplot(speaker_means_df['MeanFID'],patch_artist=True, showmeans=True)
     plt.ylabel("Mean FID (across words)")
     plt.title("Distribution of Mean FIDs Per Speaker")
     plt.show()
+
+def compare_sonne_pairs(words_segments):
+    """
+    For each speaker, we find the two 'Sonne' normal samples 
+    and compute their FID. Then do the same for the two 'Sonne'
+    sigmatism samples.
+
+    Finally, we plot the results in a boxplot with two groups:
+     - normal 'Sonne' pair FIDs
+     - sigmatism 'Sonne' pair FIDs
+    """
+    # 1) Build a DataFrame from 'words_segments'
+    data = []
+    for word in words_segments:
+        # Extract a speaker ID from the path
+        filename1 = os.path.splitext(os.path.basename(word.path))[0]
+        
+        # If you have a special naming for sigmatism
+        # so that speaker name is inside the filename, you might remove "_sig"
+        if word.label_path == "sigmatism":
+            filename1 = filename1.replace("_sig", "")
+        
+        # Pad/truncate audio if needed
+        audio_fixed = fix_audio_length(word.audio_data, int(1.7 * 16000))
+        
+        data.append({
+            "Speaker": filename1,
+            "Category": word.label_path,  # 'normal' or 'sigmatism'
+            "Audio": audio_fixed,
+            "WordLabel": word.label       # e.g. 'Sonne'
+        })
+    
+    df = pd.DataFrame(data)
+    print(df)
+    # 2) Filter only rows where WordLabel == 'Sonne'
+    df_sonne = df[df["WordLabel"] == "Sonne"].copy()
+    print(df_sonne)
+    # 3) Group by (Speaker, Category) so we group the 
+    #    two normal 'Sonne' clips, and the two sigmatism 'Sonne' clips
+    grouped = df_sonne.groupby(["Speaker", "Category"])
+    
+    # We'll store the result of comparing the 2 "Sonne" samples.
+    results = []
+    
+    for (speaker, cat), group in grouped:
+        # We expect exactly 2 rows in each group if the data is consistent
+        if len(group) < 2:
+            # If a speaker has fewer than 2 samples for this category, skip
+            continue
+        
+        # Let's just compare the first two rows:
+        audio1 = group.iloc[0]["Audio"]
+        audio2 = group.iloc[1]["Audio"]
+        
+        # Turn each audio (length N) into shape (1, N) 
+        # so that your fid function sees them as 1-sample distributions
+        audio1_2d = audio1[np.newaxis, :]
+        audio2_2d = audio2[np.newaxis, :]
+
+        fid_val = fid_for_two_arrays(audio1_2d, audio2_2d)
+
+        results.append({
+            "Speaker": speaker,
+            "Category": cat,   # 'normal' or 'sigmatism'
+            "FID": fid_val
+        })
+    
+    results_df = pd.DataFrame(results)
+    print("Comparison among the two 'Sonne' samples per category:\n", results_df)
+
+    # 4) Boxplot: Compare normal vs. sigmatism FID across all speakers
+    plt.figure(figsize=(8, 6))
+    plt.title("FID of the Two 'Sonne' Samples per Speaker (Normal vs. Sigmatism)")
+    
+    # We can manually pass [normal_FIDs, sigmatism_FIDs] to plt.boxplot
+    normal_fids = results_df[results_df["Category"] == "normal"]["FID"]
+    sig_fids     = results_df[results_df["Category"] == "sigmatism"]["FID"]
+    
+    plt.boxplot([normal_fids, sig_fids], 
+                labels=["Normal 'Sonne' Pair", "Sigmatism 'Sonne' Pair"],
+                patch_artist=True, showmeans=True)
+    
+    plt.ylabel("FID")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.show()
+
+def fid_plotting_randompairs(words_segments, n_pairs=10):
+    """
+    1) Build a DataFrame of all 'words_segments'
+       with columns: [Speaker, Category, Audio, WordLabel].
+    2) Randomly pick 'n_pairs' pairs of rows (distinct).
+    3) Fix audio length, shape them to (1, length).
+    4) Compute FID for each pair.
+    5) Show distribution of FIDs in a boxplot.
+    """
+    # 1) Build a DataFrame
+    data = []
+    for word in words_segments:
+        filename1 = os.path.splitext(os.path.basename(word.path))[0]
+        audio_fixed = fix_audio_length(word.audio_data, int(1.2 * 24000))
+        
+        data.append({
+            "Speaker": filename1,       # or however you parse the speaker
+            "Category": word.label_path, # 'normal' or 'sigmatism'
+            "Audio": audio_fixed,
+            "WordLabel": word.label     # e.g. 'Sonne' or anything else
+        })
+    
+    df = pd.DataFrame(data)
+    print(f"DataFrame built. Shape = {df.shape}")
+    
+    # 2) Randomly pick n_pairs of distinct row indices
+    #    We want pairs of *different* rows, so we can do something like:
+    all_indices = list(df.index)
+    fid_values = []
+
+    # We'll store info about which rows we compared (optional)
+    pairs_info = []
+
+    for _ in range(n_pairs):
+        # pick 2 distinct random rows
+        pair_indices = random.sample(all_indices, 2)
+        
+        row1 = df.loc[pair_indices[0]]
+        row2 = df.loc[pair_indices[1]]
+        
+        audio1 = row1["Audio"]
+        audio2 = row2["Audio"]
+        
+        # shape them so fid_for_two_arrays sees them as 1-sample distributions
+        audio1_2d = audio1[np.newaxis, :]
+        audio2_2d = audio2[np.newaxis, :]
+        
+        fid_val = fid_for_two_arrays(audio1_2d, audio2_2d)
+        fid_values.append(fid_val)
+        
+        pairs_info.append({
+            "Index1": pair_indices[0],
+            "Index2": pair_indices[1],
+            "Speaker1": row1["Speaker"],
+            "Speaker2": row2["Speaker"],
+            "Category1": row1["Category"],
+            "Category2": row2["Category"],
+            "WordLabel1": row1["WordLabel"],
+            "WordLabel2": row2["WordLabel"],
+            "FID": fid_val
+        })
+
+    # Convert pairs info to a DataFrame
+    df_pairs = pd.DataFrame(pairs_info)
+    print("\nRandom Pairs FID Info:\n", df_pairs)
+
+    # 3) Plot the distribution of FIDs
+    plt.figure(figsize=(6,6))
+    plt.boxplot(fid_values, patch_artist=True, showmeans=True)
+    plt.ylabel("FID (random pairs)")
+    plt.title(f"Distribution of FIDs for Random Word Pairs")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.show()
+    
 
 def FAD_libary():
     SAMPLE_RATE = 16000  # VGGish and many other models often assume 16kHz
@@ -461,9 +622,11 @@ if __name__ == "__main__":
     eps=1e-6
     fid_value = frechet_distance(mu1, sigma1, mu2, sigma2, eps=eps)
     print(fid_value)
+    fid_plotting_randompairs(words_segments,3000)
     #FAD_libary() # use method with model
+    #compare_sonne_pairs(words_segments)
     fid_plotting(words_segments) 
     #paired_t_test(words_segments)
     word = words_segments[0]
-    #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 8000], trendline_quefrency_range=[0.001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
+    #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 400], trendline_quefrency_range=[0.0001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
     #get_cppplots_per_speaker_and_disorder(words_segments)
