@@ -2,6 +2,8 @@
 import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v2
+from torchvision.models import mobilenet_v3_small, mobilenet_v3_large
+
 
 class CNN1D(nn.Module):
     def __init__(self, num_classes, input_size):
@@ -160,4 +162,23 @@ def initialize_mobilenet(num_classes, input_channels=1):
     # Adjust the final classifier to match the number of classes
     model.classifier[1] = nn.Linear(model.last_channel, num_classes)
 
+    return model
+
+def initialize_mobilenetV3(num_classes, input_channels=1):
+
+    #model = mobilenet_v2(weights=True)  # Load pretrained MobileNetV2
+    model = mobilenet_v3_small(pretrained=True)
+    # Modify the first convolutional layer to accept my 2D mfcc with only one channel. No rgb
+    first_conv = model.features[0][0]  # Conv2d
+    new_conv = nn.Conv2d(
+        in_channels=input_channels,
+        out_channels=first_conv.out_channels,
+        kernel_size=first_conv.kernel_size,
+        stride=first_conv.stride,
+        padding=first_conv.padding,
+        bias=False
+    )
+    model.features[0][0] = new_conv
+    # Adjust the final classifier to match the number of classes
+    model.classifier[3] = nn.Linear(in_features=1024, out_features=num_classes)
     return model

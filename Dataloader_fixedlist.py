@@ -17,7 +17,7 @@ from tqdm import tqdm
 import os
 from data_augmentation import apply_augmentation
 import torchvision.transforms as transforms
-
+import torch.nn.functional as F
 
 
 @dataclass
@@ -53,18 +53,37 @@ class FixedListDataset(Dataset):
         return len(self.audio_segments)
 
     def __getitem__(self, idx):
-        processed_object, label = self.audio_segments[idx]
+        object = self.audio_segments[idx]
+
+        heatmap = object["heatmap"]
+
+        time_steps, vocab_size = heatmap.shape
+    
+        if time_steps < 84:
+            # Amount to pad in the 'time_steps' dimension
+            pad_amount = 84 - time_steps
+            heatmap = F.pad(heatmap, pad=(0, 0, 0, pad_amount), mode='constant', value=0)
+        heatmap = heatmap.unsqueeze(0).unsqueeze(0)
+        #print(heatmap.shape)
+        #then resize both
+        heatmap = F.interpolate(heatmap,size = (224, 224)).squeeze(0)
+        label = 0
+        #print(heatmap.shape)
+        label_str = object["label_path"]
+        
+        if label_str == "sigmatism":
+             label = 1
         #print("processed",processed_object.shape)
 
-        transformed_mfcc = self.transforms(processed_object.squeeze())
+        #transformed_mfcc = self.transforms(processed_object.squeeze())
         #print(transformed_mfcc.shape)
-        return  transformed_mfcc, label
+        return  heatmap,label
 
 
 
 if __name__ == "__main__":
 
-    with open("STT_list_Interpolate_2D_train.pkl", "rb") as f:
+    with open("STT_csv\per_word_auc_values.pkl", "rb") as f:
         data = pickle.load(f)
     # Create dataset 
     segments_test = FixedListDataset(data)

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D , CNNMFCC,initialize_mobilenet
+from model import CNN1D , CNNMFCC,initialize_mobilenet,initialize_mobilenetV3
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
@@ -130,14 +130,14 @@ def split_list_after_speaker(words_segments):
     # Group word segments by speaker
     speaker_to_segments = defaultdict(list)
     for segment in words_segments:
-        speaker = os.path.basename(segment.path).replace('_sig', '')
+        speaker = os.path.basename(segment["path"]).replace('_sig', '')
         speaker_to_segments[speaker].append(segment)
     # Get a list of unique speakers
     speakers = list(speaker_to_segments.keys())
     print("number speakers: ",np.shape(speakers))
     # Split speakers into training and testing sets
-    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
-    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.13)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.07)
 
     # Collect word segments for each split
     segments_train = []
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     Hyperparameters={
         "gamma": 0.8765847276000667,
         "step_size": 35,
-        "learning_rate": 0.0007828073581569078,
+        "learning_rate": 0.0001,
         "batch_size": 16,
         "momentum": 0.11750923074076126,
     }
@@ -198,16 +198,27 @@ if __name__ == "__main__":
     momentum=Hyperparameters["momentum"]
 
     #============================Load fixed lists =====================================
-    with open("segments_train_normalmel.pkl", "rb") as f:
-        train = pickle.load(f)
-    with open("segments_val_normalmel.pkl", "rb") as f:
-        val = pickle.load(f)
+    # with open("segments_train_normalmel.pkl", "rb") as f:
+    #     train = pickle.load(f)
+    # with open("segments_val_normalmel.pkl", "rb") as f:
+    #     val = pickle.load(f)
+    # # Create dataset 
+    # segments_train = FixedListDataset(train)
+    # segments_val = FixedListDataset(val)
+
+    # train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8)
+    # val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8)
+    with open("STT_csv\per_word_auc_values.pkl", "rb") as f:
+        data = pickle.load(f)
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")   
     # Create dataset 
-    segments_train = FixedListDataset(train)
-    segments_val = FixedListDataset(val)
+    segments_train = FixedListDataset(segments_train)
+    segments_val = FixedListDataset(segments_val)
 
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8)
     val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8)
+
 
 
     # Initialize model, loss function, and optimizer
@@ -215,16 +226,16 @@ if __name__ == "__main__":
     print("Device: ",device)
     num_classes = 2  # Change as needed
     input_channels = 1  #input is grayscale spectrogram
-    model = initialize_mobilenet(num_classes, input_channels).to(device)
+    model = initialize_mobilenetV3(num_classes, input_channels).to(device)
     #model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"MobilenetV2_mel_{timestamp}.pth"
+    best_model_filename = f"MobileNet_heatmap_resized_nina{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
