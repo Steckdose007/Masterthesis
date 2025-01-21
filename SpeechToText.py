@@ -185,7 +185,7 @@ def area_under_curve(words_segments):
                 token_id = processor.tokenizer.convert_tokens_to_ids(char)
                 if token_id is None:
                     raise ValueError(f"Token '{char}' not found in vocabulary.")
-                print(token_id,char)
+                #print(token_id,char)
                 char_probs = probs[:, token_id].cpu().numpy()  # [time_steps]
                 auc = np.sum(char_probs)/num_s  # Area under the curve (AUC)
 
@@ -637,7 +637,7 @@ if __name__ == "__main__":
     loader = AudioDataLoader()
     words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
     phones = loader.load_segments_from_pickle("data_lists\phone_without_normalization_16kHz.pkl")
-    #interfere_segments(words_segments)
+    interfere_segments(words_segments)
     #area_under_curve_webmouse(words_segments,processor,model,phones)
     #area_under_curve_relative(words_segments,processor,model)
     area_under_curve(words_segments)

@@ -8,7 +8,9 @@ import os
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, classification_report
-
+import seaborn as sns
+import torch.nn.functional as F
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 def split_list_after_speaker(words_segments):
     """
@@ -48,7 +50,6 @@ def split_list_after_speaker(words_segments):
 
     return segments_train, segments_val, segments_test
 
-
 def load_per_word_auc(pickle_path):
     with open(pickle_path, "rb") as f:
         data = pickle.load(f)
@@ -70,7 +71,7 @@ def train_logistic_regression(data):
     sigmatism = []
     for entry in data:
         # We only use 'auc' as a single numeric feature here
-        # for char in ["n"]:
+        # for char in ["x","s","z"]:
         #     if char in entry["label"]:
         #         num_time = np.shape(entry["heatmap"])[0]
         #         logits = entry["heatmap"].cpu().numpy()[:, dict[char]]
@@ -82,7 +83,7 @@ def train_logistic_regression(data):
         num_time = np.shape(entry["heatmap"])[0]
         if(num_s == 0):
             num_s = 1
-        auc = entry["auc"]/num_s
+        auc = (entry["auc"]/num_s)/num_time
         
         # Convert label to 0 or 1
         label_str = entry["label_path"]
@@ -94,15 +95,29 @@ def train_logistic_regression(data):
             # If there's a different label, you can skip or handle differently
             continue
 
+    mean_normal = np.mean(normal)
+    mean_sigmatism = np.mean(sigmatism)
+
     plt.figure(figsize=(8, 6))
-    # Plot Normal data
-    plt.hist(normal, bins=40, alpha=0.5, label='Normal')
-    # Plot Sigmatism data
-    plt.hist(sigmatism, bins=40, alpha=0.5, label='Sigmatism')
-    
-    plt.title('AUC Distributions: Normal vs. Sigmatism')
+
+    # You can pick your own colors or let seaborn choose:
+    normal_color = 'blue'
+    sigmatism_color = 'orange'
+
+    # Plot KDE for Normal
+    sns.kdeplot(normal, shade=True, color=normal_color, label='Normal')
+    # Plot KDE for Sigmatism
+    sns.kdeplot(sigmatism, shade=True, color=sigmatism_color, label='Sigmatism')
+
+    # Draw vertical lines for the means
+    plt.axvline(mean_normal, color=normal_color, linestyle='--',
+                label=f'Mean Normal = {mean_normal:.2f}')
+    plt.axvline(mean_sigmatism, color=sigmatism_color, linestyle='--',
+                label=f'Mean Sigmatism = {mean_sigmatism:.2f}')
+
+    plt.title('AUC Distributions: Normal vs. Sigmatism (KDE) with Means')
     plt.xlabel('AUC')
-    plt.ylabel('Count')
+    plt.ylabel('Density')
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -212,22 +227,77 @@ def hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val):
     print("Best Cross-Validation Accuracy:", grid_search.best_score_)
 
 
-   
+def hits_above(data):
+    MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
+    processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
+    model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+    s_token_id = processor.tokenizer.convert_tokens_to_ids("s")  
+    # -2.215189873417721
+    # Inter_dist 1.9240623244177293
+    threshold=5
+    normal = []
+    sigmatism = []
+    for entry in data:
+        # Only process entries that have 's' in their label (word)
+        if "s" in entry["label"].lower():  
+            # Get logits (shape [time_steps, vocab_size])
+            # If it's on GPU, you may want to do: logits = entry["heatmap"].cpu()
+            logits = entry["heatmap"]  
+            
+            # Convert to probabilities
+            probs = F.softmax(logits, dim=-1)  # shape: [time_steps, vocab_size]
+            
+            # Extract the probabilities for 's' at each time step
+            s_probs = probs[:, s_token_id]  # shape: [time_steps]
+            #hits_count=0
+            # Count how many frames exceed the threshold
+            #hits_count = (s_probs >= threshold).sum().item()
+            p_max = s_probs.max().item()
+
+            label_str = entry["label_path"]
+            if label_str == "normal":
+                normal.append(p_max)
+            elif label_str == "sigmatism":
+                sigmatism.append(p_max)
 
 
+    mean_normal = np.mean(normal)
+    mean_sigmatism = np.mean(sigmatism)
+    # You can pick your own colors or let seaborn choose:
+    normal_color = 'blue'
+    sigmatism_color = 'orange'
+
+    # Plot KDE for Normal
+    sns.kdeplot(normal, shade=True, color=normal_color, label='Normal')
+    # Plot KDE for Sigmatism
+    sns.kdeplot(sigmatism, shade=True, color=sigmatism_color, label='Sigmatism')
+
+    # Draw vertical lines for the means
+    plt.axvline(mean_normal, color=normal_color, linestyle='--',
+                label=f'Mean Normal = {mean_normal:.2f}')
+    plt.axvline(mean_sigmatism, color=sigmatism_color, linestyle='--',
+                label=f'Mean Sigmatism = {mean_sigmatism:.2f}')
+
+    plt.title(f'Max P for s: Normal vs. Sigmatism (KDE) with Means')
+    plt.xlabel('Probability')
+    plt.ylabel('Density')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     # 1) Load data from pickle
     per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
-    len =0
-    for entry in per_word_auc_data:
-        time = np.shape(entry["heatmap"])[0]
-        if time > len:
-            len = time
-            print(len)
+    # leng =0
+    # for entry in per_word_auc_data:
+    #     time = np.shape(entry["heatmap"])[0]
+    #     if time > leng:
+    #         leng = time
+    #         print(leng)
 
-    print(len)
+    # print(leng)
     # 2) Train logistic regression
-    model = train_logistic_regression(per_word_auc_data)
+    hits_above(per_word_auc_data)
+    #model = train_logistic_regression(per_word_auc_data)
 
   
