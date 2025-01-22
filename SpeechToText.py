@@ -74,7 +74,7 @@ def interfere_segments(words_segments):
     probs = F.softmax(logits, dim=-1)
     print_outputs(probs,segment.label,segment.label_path)
 
-    s_token_id = processor.tokenizer.convert_tokens_to_ids("S")
+    s_token_id = processor.tokenizer.convert_tokens_to_ids("s")
     s_probs = probs[0, :, s_token_id]
 
     print("Shape of s_probs:", s_probs.shape)
@@ -87,6 +87,7 @@ def interfere_segments(words_segments):
     print("-" * 100)
     print("Reference:", segment.label)
     print("Prediction:", predicted_sentences)
+    plt.show()
 
 def print_outputs(output,label_word,label_path):
     
@@ -117,9 +118,7 @@ def print_outputs(output,label_word,label_path):
     plt.xlabel("Time Steps")
     plt.ylabel("Vocab Index")
     plt.colorbar(label="Logit Value")
-
     plt.tight_layout()
-    plt.show()
 
     """Plot prediction for s over time"""
     # 1. Convert logits -> probabilities
@@ -145,7 +144,6 @@ def print_outputs(output,label_word,label_path):
     plt.title("Probability of 'S' Across Time Steps")
     plt.legend()
     plt.tight_layout()
-    plt.show()
 
 def area_under_curve(words_segments):
     """
@@ -181,13 +179,13 @@ def area_under_curve(words_segments):
         # 2.3 Extract probabilities and calculate AUC for characters present in the word
         for char in ["s", "x", "z"]:
             if char in corrected_text:  # Only process if the character is in the word
-                num_s = corrected_text.count('char')
+                #num_s = corrected_text.count('char')
                 token_id = processor.tokenizer.convert_tokens_to_ids(char)
                 if token_id is None:
                     raise ValueError(f"Token '{char}' not found in vocabulary.")
                 #print(token_id,char)
                 char_probs = probs[:, token_id].cpu().numpy()  # [time_steps]
-                auc = np.sum(char_probs)/num_s  # Area under the curve (AUC)
+                auc = np.sum(char_probs)#/num_s  # Area under the curve (AUC)
 
                 sum_logits = np.sum(logits[0][:, token_id].cpu().numpy())
                 # 2.4 Store AUC in the corresponding dictionary
@@ -240,7 +238,6 @@ def area_under_curve(words_segments):
         plt.legend()
         plt.tight_layout()
         plt.show()
-
 
 def area_under_curve_relative(words_segments, processor, model):
     """
@@ -640,7 +637,7 @@ if __name__ == "__main__":
     interfere_segments(words_segments)
     #area_under_curve_webmouse(words_segments,processor,model,phones)
     #area_under_curve_relative(words_segments,processor,model)
-    area_under_curve(words_segments)
+    #area_under_curve(words_segments)
     #only_take_s(words_segments)
 
 

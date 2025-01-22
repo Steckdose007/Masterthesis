@@ -7,7 +7,8 @@ from sklearn.metrics import accuracy_score
 import os
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report,roc_curve , auc
+import sklearn.metrics
 import seaborn as sns
 import torch.nn.functional as F
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
@@ -71,29 +72,36 @@ def train_logistic_regression(data):
     sigmatism = []
     for entry in data:
         # We only use 'auc' as a single numeric feature here
-        # for char in ["x","s","z"]:
-        #     if char in entry["label"]:
-        #         num_time = np.shape(entry["heatmap"])[0]
-        #         logits = entry["heatmap"].cpu().numpy()[:, dict[char]]
-        #         #logits += 25
-        #         #print(np.shape(entry["heatmap"]),np.shape(logits))
-        #         auc = np.sum(logits)/num_time
-
-        num_s = entry["label"].count('s')
-        num_time = np.shape(entry["heatmap"])[0]
-        if(num_s == 0):
-            num_s = 1
-        auc = (entry["auc"]/num_s)/num_time
+        """Uswe the raw logits"""
+        for char in ["x","s","z"]:
+            if char in entry["label"]:
+                num_time = np.shape(entry["heatmap"])[0]
+                num_s = entry["label"].count('s')
+                if(num_s == 0):
+                    num_s = 1
+                #print(entry["heatmap"].shape)
+                logits = entry["heatmap"].cpu().numpy()[:, dict[char]]
+                logits += 25
+                #print(np.shape(entry["heatmap"]),np.shape(logits))
+                auc = (np.sum(logits)/num_time)
+                label_str = entry["label_path"]
+                if label_str == "normal":
+                    normal.append(auc)
+                elif label_str == "sigmatism":
+                    sigmatism.append(auc)
+                else:
+                    # If there's a different label, you can skip or handle differently
+                    continue
+        
+        """Old approach """
+        # num_s = entry["label"].count('s')
+        # num_time = np.shape(entry["heatmap"])[0]
+        # if(num_s == 0):
+        #     num_s = 1
+        # auc = (entry["auc"]/num_s)/num_time
         
         # Convert label to 0 or 1
-        label_str = entry["label_path"]
-        if label_str == "normal":
-            normal.append(auc)
-        elif label_str == "sigmatism":
-            sigmatism.append(auc)
-        else:
-            # If there's a different label, you can skip or handle differently
-            continue
+        
 
     mean_normal = np.mean(normal)
     mean_sigmatism = np.mean(sigmatism)
@@ -124,74 +132,90 @@ def train_logistic_regression(data):
 
 
 
+    a = np.arange(0, 1,100)
+    thresholds = []
+    for threshold in a:
+        segments_train, segments_val, segments_test= split_list_after_speaker(data)
+        # Prepare feature matrix X and label vector y
+        X_train = []
+        y_train = []
+        for entry in segments_train:
+            # We only use 'auc' as a single numeric feature here
+            num_s = entry["label"].count('s')
+            if(num_s == 0):
+                num_s = 1
 
-    segments_train, segments_val, segments_test= split_list_after_speaker(data)
-    # Prepare feature matrix X and label vector y
-    X_train = []
-    y_train = []
-    for entry in segments_train:
-        # We only use 'auc' as a single numeric feature here
-        num_s = entry["label"].count('s')
-        if(num_s == 0):
-            num_s = 1
+            num_time = np.shape(entry["heatmap"])[0]
 
-        num_time = np.shape(entry["heatmap"])[0]
-
-        auc = entry["auc"]/num_time
-        X_train.append(auc)
+            auc = entry["auc"]/num_time/num_s
+            X_train.append(auc)
+            
+            # Convert label to 0 or 1
+            label_str = entry["label_path"]
+            if label_str == "normal":
+                y_train.append(0)
+            elif label_str == "sigmatism":
+                y_train.append(1)
+            else:
+                # If there's a different label, you can skip or handle differently
+                continue
         
-        # Convert label to 0 or 1
-        label_str = entry["label_path"]
-        if label_str == "normal":
-            y_train.append(0)
-        elif label_str == "sigmatism":
-            y_train.append(1)
-        else:
-            # If there's a different label, you can skip or handle differently
-            continue
+        X_val = []
+        y_val = []    
+        for entry in segments_val:
+            # We only use 'auc' as a single numeric feature here
+            num_s = entry["label"].count('s')
+            if(num_s == 0):
+                num_s = 1
+            num_time = np.shape(entry["heatmap"])[0]
+
+            auc = entry["auc"]/num_time/num_s
+            X_val.append(auc)
+            
+            # Convert label to 0 or 1
+            label_str = entry["label_path"]
+            if label_str == "normal":
+                y_val.append(0)
+            elif label_str == "sigmatism":
+                y_val.append(1)
+            else:
+                # If there's a different label, you can skip or handle differently
+                continue
+
     
-    X_val = []
-    y_val = []    
-    for entry in segments_val:
-        # We only use 'auc' as a single numeric feature here
-        num_s = entry["label"].count('s')
-        if(num_s == 0):
-            num_s = 1
-        num_time = np.shape(entry["heatmap"])[0]
 
-        auc = entry["auc"]/num_time
-        X_val.append(auc)
-        
-        # Convert label to 0 or 1
-        label_str = entry["label_path"]
-        if label_str == "normal":
-            y_val.append(0)
-        elif label_str == "sigmatism":
-            y_val.append(1)
-        else:
-            # If there's a different label, you can skip or handle differently
-            continue
+        print(np.shape(X_train))
+        # Convert to numpy arrays
+        X_train = np.array(X_train).reshape(-1, 1)  # shape (n_samples, 1)
+        y_train = np.array(y_train)
+        X_val = np.array(X_val).reshape(-1, 1)  # shape (n_samples, 1)
+        y_val = np.array(y_val)
+        print(np.shape(X_train))
 
- 
+        hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val)
 
-    print(np.shape(X_train))
-    # Convert to numpy arrays
-    X_train = np.array(X_train).reshape(-1, 1)  # shape (n_samples, 1)
-    y_train = np.array(y_train)
-    X_val = np.array(X_val).reshape(-1, 1)  # shape (n_samples, 1)
-    y_val = np.array(y_val)
-    print(np.shape(X_train))
+        # Create and train the logistic regression model
+        clf = LogisticRegression()
+        clf.fit(X_train, y_train)
 
-    hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val)
+        # Evaluate on the test set
+        y_pred = clf.predict(X_val)
+        accuracy = accuracy_score(y_val, y_pred)
+        print(f"Test Accuracy: {accuracy:.3f}")
+        cm = confusion_matrix(y_val, y_pred)
+        print("Confusion Matrix:")
+        print(cm)
+        tn, fp, fn, tp = cm.ravel()
 
-    # Create and train the logistic regression model
-    clf = LogisticRegression()
-    clf.fit(X_train, y_train)
+        # Compute Sensitivity (Recall for positive class)
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
 
-    # Evaluate on the test set
-    y_pred = clf.predict(X_val)
-    accuracy = accuracy_score(y_val, y_pred)
-    print(f"Test Accuracy: {accuracy:.3f}")
+        # Compute Specificity (Recall for negative class)
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+
+        print(f"Sensitivity (Recall for sigmatism): {sensitivity:.3f}")
+        print(f"Specificity (Recall for normal): {specificity:.3f}")
+
 
     return clf
 
@@ -226,43 +250,186 @@ def hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val):
     print("\nBest Params:", grid_search.best_params_)
     print("Best Cross-Validation Accuracy:", grid_search.best_score_)
 
+def naive_threshold(data):
+
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    
+    # Prepare feature matrix X and label vector y
+    X_train = []
+    y_train = []
+    normal = []
+    sigmatism = []
+    for entry in segments_train:
+        # We only use 'auc' as a single numeric feature here
+        num_s = entry["label"].count('s')
+        if(num_s == 0):
+            num_s = 1
+
+        num_time = np.shape(entry["heatmap"])[0]
+
+        auc = entry["auc"]
+        X_train.append(auc)
+        
+        # Convert label to 0 or 1
+        label_str = entry["label_path"]
+        if label_str == "normal":
+            normal.append(auc)
+            y_train.append(0)
+        elif label_str == "sigmatism":
+            sigmatism.append(auc)
+            y_train.append(1)
+        else:
+            # If there's a different label, you can skip or handle differently
+            continue
+    
+    X_val = []
+    y_val = []    
+    for entry in segments_val:
+        # We only use 'auc' as a single numeric feature here
+        num_s = entry["label"].count('s')
+        if(num_s == 0):
+            num_s = 1
+        num_time = np.shape(entry["heatmap"])[0]
+
+        auc = entry["auc"]
+        X_val.append(auc)
+        
+        # Convert label to 0 or 1
+        label_str = entry["label_path"]
+        if label_str == "normal":
+            normal.append(auc)
+            y_val.append(0)
+        elif label_str == "sigmatism":
+            sigmatism.append(auc)
+            y_val.append(1)
+        else:
+            # If there's a different label, you can skip or handle differently
+            continue
+    """Plot the distribution"""
+    mean_normal = np.mean(normal)
+    mean_sigmatism = np.mean(sigmatism)
+
+    plt.figure(figsize=(8, 6))
+
+    # You can pick your own colors or let seaborn choose:
+    normal_color = 'blue'
+    sigmatism_color = 'orange'
+
+    # Plot KDE for Normal
+    sns.kdeplot(normal, shade=True, color=normal_color, label='Normal')
+    # Plot KDE for Sigmatism
+    sns.kdeplot(sigmatism, shade=True, color=sigmatism_color, label='Sigmatism')
+
+    # Draw vertical lines for the means
+    plt.axvline(mean_normal, color=normal_color, linestyle='--',
+                label=f'Mean Normal = {mean_normal:.2f}')
+    plt.axvline(mean_sigmatism, color=sigmatism_color, linestyle='--',
+                label=f'Mean Sigmatism = {mean_sigmatism:.2f}')
+
+    plt.title('AUC Distributions: Normal vs. Sigmatism (KDE) with Means')
+    plt.xlabel('AUC')
+    plt.ylabel('Density')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+    print(np.shape(X_train))
+    # Convert to numpy arrays
+    X_train = np.array(X_train).reshape(-1, 1)  # shape (n_samples, 1)
+    y_train = np.array(y_train)
+    X_val = np.array(X_val).reshape(-1, 1)  # shape (n_samples, 1)
+    y_val = np.array(y_val)
+    print(np.shape(X_train))
+    #hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val)
+
+    # Train logistic regression model
+    #For not normalized:
+    clf = LogisticRegression(solver="liblinear",C=0.001, penalty="l2")
+    #For double normalized:
+    #clf = LogisticRegression(solver="liblinear",C=0.1, penalty="l2")
+
+    clf.fit(X_train, y_train)
+    # Evaluate on the test set
+    y_pred = clf.predict(X_val)
+    accuracy = accuracy_score(y_val, y_pred)
+    print(f"Test Accuracy: {accuracy:.3f}")
+    cm = confusion_matrix(y_val, y_pred)
+    print("Confusion Matrix:")
+    print(cm)
+    tn, fp, fn, tp = cm.ravel()
+    # Predict probabilities
+    y_val_scores = clf.predict_proba(X_val)[:, 1]
+
+
+    # Compute ROC curve and AUC for validation data
+    fpr_val, tpr_val, _ = roc_curve(y_val, y_val_scores)
+    roc_auc_val = sklearn.metrics.auc(fpr_val, tpr_val)
+
+    # Compute Sensitivity (Recall for positive class)
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+    # Compute Specificity (Recall for negative class)
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+
+    print(f"Sensitivity (Recall for sigmatism): {sensitivity:.3f}")
+    print(f"Specificity (Recall for normal): {specificity:.3f}")
+
+    # Plot ROC curves
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr_val, tpr_val, label=f"Validation ROC curve (AUC = {roc_auc_val:.2f})")
+    plt.plot([0, 1], [0, 1], 'k--', label="Random guess (AUC = 0.50)")
+
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Receiver Operating Characteristic (ROC) Curve")
+    plt.legend(loc="lower right")
+    plt.grid()
+    plt.show()
+
 
 def hits_above(data):
     MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
-    model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
     s_token_id = processor.tokenizer.convert_tokens_to_ids("s")  
     # -2.215189873417721
     # Inter_dist 1.9240623244177293
-    threshold=5
-    normal = []
-    sigmatism = []
-    for entry in data:
-        # Only process entries that have 's' in their label (word)
-        if "s" in entry["label"].lower():  
-            # Get logits (shape [time_steps, vocab_size])
-            # If it's on GPU, you may want to do: logits = entry["heatmap"].cpu()
-            logits = entry["heatmap"]  
-            
-            # Convert to probabilities
-            probs = F.softmax(logits, dim=-1)  # shape: [time_steps, vocab_size]
-            
-            # Extract the probabilities for 's' at each time step
-            s_probs = probs[:, s_token_id]  # shape: [time_steps]
-            #hits_count=0
-            # Count how many frames exceed the threshold
-            #hits_count = (s_probs >= threshold).sum().item()
-            p_max = s_probs.max().item()
+    a = np.arange(0, 1,100)
+    thresholds = []
+    for threshold in a:
+        normal = []
+        sigmatism = []
+        for entry in data:
+            # Only process entries that have 's' in their label (word)
+            if "s" in entry["label"].lower():  
+                # Get logits (shape [time_steps, vocab_size])
+                # If it's on GPU, you may want to do: logits = entry["heatmap"].cpu()
+                logits = entry["heatmap"]  
+                
+                # # Convert to probabilities
+                probs = F.softmax(logits, dim=-1)  # shape: [time_steps, vocab_size]
+                
+                # Extract the probabilities for 's' at each time step
+                s_probs = probs[:, s_token_id]  # shape: [time_steps]
+                """Hits counted above threshold"""
+                hits_count=0
+                # Count how many frames exceed the threshold
+                hits_count = (s_probs >= threshold).sum().item()
+                """P_max"""
+                #p_max = s_probs.max().item()
+                label_str = entry["label_path"]
+                if label_str == "normal":
+                    normal.append(hits_count)
+                elif label_str == "sigmatism":
+                    sigmatism.append(hits_count)
 
-            label_str = entry["label_path"]
-            if label_str == "normal":
-                normal.append(p_max)
-            elif label_str == "sigmatism":
-                sigmatism.append(p_max)
 
-
-    mean_normal = np.mean(normal)
-    mean_sigmatism = np.mean(sigmatism)
+        mean_normal = np.mean(normal)
+        mean_sigmatism = np.mean(sigmatism)
+        thresholds.append(mean_normal-mean_sigmatism)
+        print("Inter class mean dist: ",mean_normal-mean_sigmatism, threshold)
     # You can pick your own colors or let seaborn choose:
     normal_color = 'blue'
     sigmatism_color = 'orange'
@@ -297,7 +464,8 @@ if __name__ == "__main__":
 
     # print(leng)
     # 2) Train logistic regression
-    hits_above(per_word_auc_data)
+    #hits_above(per_word_auc_data)
+    naive_threshold(per_word_auc_data)
     #model = train_logistic_regression(per_word_auc_data)
 
   
