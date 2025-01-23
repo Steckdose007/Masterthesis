@@ -467,23 +467,73 @@ def find_pairs(audio_segments,phones_segments,index):
     print("ERROR...............................................ERROR")
     return None, None,None,None
 
+def split_list_after_speaker(words_segments):
+    """
+    Groups words to their corresponding speakers and creates train test val split
+    Returns:
+    Train test val split with speakers
+    """
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        normalized_path = segment.path.replace("\\", "/")
+        #print(normalized_path)
+        _, filename = os.path.split(normalized_path)
+        #print(filename)
+        speaker = filename.replace('_sig', '')
+        #print(speaker)
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.13)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.07)
+
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    segments_val = []
+    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+    for speaker in speakers_val:
+        segments_val.extend(speaker_to_segments[speaker])
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+
+    return segments_train, segments_val, segments_test
+
+def compute_mean_sdt_for_normalization(data):
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    train_samples = []
+    for f in segments_train:
+        train_samples.append(f.audio_data)
+    print(np.shape(train_samples))
+    train_samples = np.concatenate(train_samples)
+    train_mean = np.mean(train_samples)
+    train_std = np.std(train_samples)
+    print("train_mean:", train_mean, " train_std:", train_std)
+
+
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= True, phone_data= True, sentence_data= False, get_buffer=True, downsample=False)
-    phones_segments = loader.create_dataclass_phones()
-    words_segments = loader.create_dataclass_words()
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=False)
+    #phones_segments = loader.create_dataclass_phones()
+    #words_segments = loader.create_dataclass_words()
     #sentences_segments = loader.create_dataclass_sentences()
     #loader.save_segments_to_pickle(phones_segments, "phone_normalized_44kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_normalized_44kHz.pkl")
     #loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
     phones_segments = loader.load_segments_from_pickle("data_lists\phone_without_normalization_44kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_44100Hz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
     # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    
+    compute_mean_sdt_for_normalization(words_segments)
     #get_box_length(words_segments)
     
-    sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100)
+    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100)
     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
-    plotting.plot_mel_spectrogram(sigmatism)
+    #plotting.plot_mel_spectrogram(sigmatism)
     #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
     #plotting.plot_mel_spectrogram(normal,phones_list_normal)
     #plotting.compare_spectral_envelopes(sigmatism, normal)

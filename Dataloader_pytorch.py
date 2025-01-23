@@ -133,9 +133,9 @@ class AudioSegmentDataset(Dataset):
         mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=n_mels,n_fft=n_fft,hop_length=hop_length,win_length=frame_length)
         mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
 
-        mel_spectrogram_db_normalized = (mel_spectrogram_db + 80) / 80
-        normalized_spectrogram = (mel_spectrogram_db_normalized - 0.485) / 0.229
-        return normalized_spectrogram
+        #mel_spectrogram_db_normalized = (mel_spectrogram_db + 80) / 80
+        #normalized_spectrogram = (mel_spectrogram_db_normalized - 0.485) / 0.229
+        return mel_spectrogram_db
     
     def normalize_mfcc(self,mfcc):
         """

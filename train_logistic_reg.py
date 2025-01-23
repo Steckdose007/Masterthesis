@@ -56,18 +56,109 @@ def load_per_word_auc(pickle_path):
         data = pickle.load(f)
     return data
 
-def train_logistic_regression(data):
+def pairwise_comparison_aggregate(logits, target_vocab_index):
     """
-    Given the list of dicts (each with "auc" and "label_path"),
-    trains a logistic regression classifier to predict sigmatism vs normal.
+    Compute an aggregate score for the target class by comparing its logit
+    with the logits of all other classes in each time step.
     """
+    logits = np.array(logits)  # Ensure numpy array
+    target_logits = logits[:, target_vocab_index]  # Extract logits for the target class (e.g., 's')
+    
+    # Compute pairwise differences for all other classes
+    differences = target_logits[:, np.newaxis] - logits  # Broadcast target class over all classes
+    
+    # Aggregate differences by summing or averaging across all other classes
+    aggregate_score = np.sum(differences, axis=1)  # Sum differences for each time step
+    
+    return aggregate_score
+
+def linear_normalization_with_sum_to_one(logits):
+    logits = np.array(logits)
+    min_vals = np.min(logits, axis=1, keepdims=True)
+    max_vals = np.max(logits, axis=1, keepdims=True)
+    
+    # Perform Min-Max scaling
+    scaled_logits = (logits - min_vals) / (max_vals - min_vals + 1e-9)  # Avoid division by zero
+    
+    # # Normalize so each row sums to 1
+    # row_sums = np.sum(scaled_logits, axis=1, keepdims=True)
+    # normalized_logits = scaled_logits / (row_sums + 1e-9)  # Avoid division by zero
+    
+    return scaled_logits
+
+def print_outputs(output,label_word,label_path):
+    
+    logits = output # shape: [time_steps, vocab_size]
+    """plot heatmap for all character"""
+    # 1. Convert to numpy array for plotting
+    logits_np = logits  # shape: (time_steps, vocab_size)
+    # 2. Plot as a heatmap
+    plt.figure(figsize=(12, 6))
+    # We transpose so:
+    #  - x-axis = time steps
+    #  - y-axis = vocab indices
+    # shape becomes (vocab_size, time_steps)
+    plt.imshow(logits_np.T, aspect='auto', cmap='plasma', origin='lower')
+    # Get vocabulary tokens
+    vocab_tokens = processor.tokenizer.convert_ids_to_tokens(range(logits.shape[-1]))
+
+    # Number of ticks (this will match vocab_size)
+    num_vocab = len(vocab_tokens)
+
+    # Set up the ticks on Y-axis at intervals (be careful with large vocab)
+    plt.yticks(
+        ticks=np.arange(num_vocab),
+        labels=vocab_tokens,
+        fontsize=6  # might need to reduce font size if it's a large vocab
+    )
+    plt.title(f"{label_word} Logits Heatmap with {label_path}")
+    plt.xlabel("Time Steps")
+    plt.ylabel("Vocab Index")
+    plt.colorbar(label="Logit Value")
+    plt.tight_layout()
+    
+def modified_softmax_2d(logits, transformation='log'):
+    logits = np.array(logits)
+    if transformation == 'log':
+        logits = np.log(np.maximum(logits, 0) + 1)  # Log transform
+    elif transformation == 'sqrt':
+        logits = np.sqrt(np.maximum(logits, 0))  # Square-root transform
+    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Stability
+    return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+def temperature_scaled_softmax_2d(logits, temperature=4.0):
+    """
+    Apply temperature-scaled softmax to a 2D array of logits.
+    
+    Args:
+        logits (np.ndarray): 2D array with shape [time_steps, vocab_size].
+        temperature (float): Temperature scaling factor (T > 0). Higher T smooths probabilities.
+    
+    Returns:
+        np.ndarray: 2D array of softmax probabilities with the same shape as logits.
+    """
+    logits = np.array(logits)
+    
+    # Scale logits by temperature
+    scaled_logits = logits / temperature
+    
+    # Subtract max for numerical stability (row-wise)
+    scaled_logits = scaled_logits - np.max(scaled_logits, axis=1, keepdims=True)
+    
+    # Compute softmax
+    exp_logits = np.exp(scaled_logits)
+    probabilities = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+    
+    return probabilities
+
+def plot_bimodal_dist(data):
     dict = {
         "s" : 25,
         "z" : 32,
         "x" : 30,
         "n": 20
     }
-    
+    print("Start")
     normal = []
     sigmatism = []
     for entry in data:
@@ -80,10 +171,17 @@ def train_logistic_regression(data):
                 if(num_s == 0):
                     num_s = 1
                 #print(entry["heatmap"].shape)
-                logits = entry["heatmap"].cpu().numpy()[:, dict[char]]
-                logits += 25
+                logits = entry["heatmap"].cpu().numpy()
+                #logits += 25
+                #print_outputs(logits,entry["label"],entry["label_path"])
+                logits_norm = temperature_scaled_softmax_2d(logits,dict[char])
+                #print_outputs(logits_norm,entry["label"],entry["label_path"])
+                #print(np.shape(logits_norm))
+                #print(np.sum(logits_norm[0,:]))
+                #plt.show()
                 #print(np.shape(entry["heatmap"]),np.shape(logits))
-                auc = (np.sum(logits)/num_time)
+                auc = (np.sum(logits_norm[:, dict[char]]))/num_s/num_time
+                #auc = np.sum(logits_norm)#/num_s/num_time
                 label_str = entry["label_path"]
                 if label_str == "normal":
                     normal.append(auc)
@@ -123,98 +221,99 @@ def train_logistic_regression(data):
     plt.axvline(mean_sigmatism, color=sigmatism_color, linestyle='--',
                 label=f'Mean Sigmatism = {mean_sigmatism:.2f}')
 
-    plt.title('AUC Distributions: Normal vs. Sigmatism (KDE) with Means')
+    plt.title('pairwise_comparison_aggregate AUC Distributions: Normal vs. Sigmatism (KDE) with Means')
     plt.xlabel('AUC')
     plt.ylabel('Density')
     plt.legend()
     plt.tight_layout()
     plt.show()
 
+def train_logistic_regression(data):
+    """
+    Given the list of dicts (each with "auc" and "label_path"),
+    trains a logistic regression classifier to predict sigmatism vs normal.
+    """
 
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    # Prepare feature matrix X and label vector y
+    X_train = []
+    y_train = []
+    for entry in segments_train:
+        # We only use 'auc' as a single numeric feature here
+        num_s = entry["label"].count('s')
+        if(num_s == 0):
+            num_s = 1
 
-    a = np.arange(0, 1,100)
-    thresholds = []
-    for threshold in a:
-        segments_train, segments_val, segments_test= split_list_after_speaker(data)
-        # Prepare feature matrix X and label vector y
-        X_train = []
-        y_train = []
-        for entry in segments_train:
-            # We only use 'auc' as a single numeric feature here
-            num_s = entry["label"].count('s')
-            if(num_s == 0):
-                num_s = 1
+        num_time = np.shape(entry["heatmap"])[0]
 
-            num_time = np.shape(entry["heatmap"])[0]
-
-            auc = entry["auc"]/num_time/num_s
-            X_train.append(auc)
-            
-            # Convert label to 0 or 1
-            label_str = entry["label_path"]
-            if label_str == "normal":
-                y_train.append(0)
-            elif label_str == "sigmatism":
-                y_train.append(1)
-            else:
-                # If there's a different label, you can skip or handle differently
-                continue
+        auc = entry["auc"]/num_time/num_s
+        X_train.append(auc)
         
-        X_val = []
-        y_val = []    
-        for entry in segments_val:
-            # We only use 'auc' as a single numeric feature here
-            num_s = entry["label"].count('s')
-            if(num_s == 0):
-                num_s = 1
-            num_time = np.shape(entry["heatmap"])[0]
-
-            auc = entry["auc"]/num_time/num_s
-            X_val.append(auc)
-            
-            # Convert label to 0 or 1
-            label_str = entry["label_path"]
-            if label_str == "normal":
-                y_val.append(0)
-            elif label_str == "sigmatism":
-                y_val.append(1)
-            else:
-                # If there's a different label, you can skip or handle differently
-                continue
-
+        # Convert label to 0 or 1
+        label_str = entry["label_path"]
+        if label_str == "normal":
+            y_train.append(0)
+        elif label_str == "sigmatism":
+            y_train.append(1)
+        else:
+            # If there's a different label, you can skip or handle differently
+            continue
     
+    X_val = []
+    y_val = []    
+    for entry in segments_val:
+        # We only use 'auc' as a single numeric feature here
+        num_s = entry["label"].count('s')
+        if(num_s == 0):
+            num_s = 1
+        num_time = np.shape(entry["heatmap"])[0]
 
-        print(np.shape(X_train))
-        # Convert to numpy arrays
-        X_train = np.array(X_train).reshape(-1, 1)  # shape (n_samples, 1)
-        y_train = np.array(y_train)
-        X_val = np.array(X_val).reshape(-1, 1)  # shape (n_samples, 1)
-        y_val = np.array(y_val)
-        print(np.shape(X_train))
+        auc = entry["auc"]/num_time/num_s
+        X_val.append(auc)
+        
+        # Convert label to 0 or 1
+        label_str = entry["label_path"]
+        if label_str == "normal":
+            y_val.append(0)
+        elif label_str == "sigmatism":
+            y_val.append(1)
+        else:
+            # If there's a different label, you can skip or handle differently
+            continue
 
-        hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val)
 
-        # Create and train the logistic regression model
-        clf = LogisticRegression()
-        clf.fit(X_train, y_train)
 
-        # Evaluate on the test set
-        y_pred = clf.predict(X_val)
-        accuracy = accuracy_score(y_val, y_pred)
-        print(f"Test Accuracy: {accuracy:.3f}")
-        cm = confusion_matrix(y_val, y_pred)
-        print("Confusion Matrix:")
-        print(cm)
-        tn, fp, fn, tp = cm.ravel()
+    print(np.shape(X_train))
+    # Convert to numpy arrays
+    X_train = np.array(X_train).reshape(-1, 1)  # shape (n_samples, 1)
+    y_train = np.array(y_train)
+    X_val = np.array(X_val).reshape(-1, 1)  # shape (n_samples, 1)
+    y_val = np.array(y_val)
+    print(np.shape(X_train))
 
-        # Compute Sensitivity (Recall for positive class)
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    hyperparameter_tuning_logreg(X_train, X_val, y_train, y_val)
 
-        # Compute Specificity (Recall for negative class)
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    # Create and train the logistic regression model
+    clf = LogisticRegression()
+    clf.fit(X_train, y_train)
 
-        print(f"Sensitivity (Recall for sigmatism): {sensitivity:.3f}")
-        print(f"Specificity (Recall for normal): {specificity:.3f}")
+    # Evaluate on the test set
+    y_pred = clf.predict(X_val)
+    accuracy = accuracy_score(y_val, y_pred)
+    print(f"Test Accuracy: {accuracy:.3f}")
+    cm = confusion_matrix(y_val, y_pred)
+    print("Confusion Matrix:")
+    print(cm)
+    tn, fp, fn, tp = cm.ravel()
+
+    # Compute Sensitivity (Recall for positive class)
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+    # Compute Specificity (Recall for negative class)
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+
+    print(f"Sensitivity (Recall for sigmatism): {sensitivity:.3f}")
+    print(f"Specificity (Recall for normal): {specificity:.3f}")
 
 
     return clf
@@ -266,8 +365,9 @@ def naive_threshold(data):
             num_s = 1
 
         num_time = np.shape(entry["heatmap"])[0]
-
-        auc = entry["auc"]
+        logits = entry["heatmap"].cpu().numpy()
+        logits_norm = pairwise_comparison_aggregate(logits,25)
+        auc = np.sum(logits_norm)/num_s/num_time
         X_train.append(auc)
         
         # Convert label to 0 or 1
@@ -291,7 +391,9 @@ def naive_threshold(data):
             num_s = 1
         num_time = np.shape(entry["heatmap"])[0]
 
-        auc = entry["auc"]
+        logits = entry["heatmap"].cpu().numpy()
+        logits_norm = pairwise_comparison_aggregate(logits,25)
+        auc = np.sum(logits_norm)/num_s/num_time
         X_val.append(auc)
         
         # Convert label to 0 or 1
@@ -389,7 +491,6 @@ def naive_threshold(data):
     plt.grid()
     plt.show()
 
-
 def hits_above(data):
     MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
@@ -454,18 +555,21 @@ def hits_above(data):
 
 if __name__ == "__main__":
     # 1) Load data from pickle
-    per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
+    MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
+    processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
+    model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+    per_word_auc_data = load_per_word_auc("data_lists\STT_heatmap_list.pkl")
     # leng =0
     # for entry in per_word_auc_data:
     #     time = np.shape(entry["heatmap"])[0]
     #     if time > leng:
     #         leng = time
     #         print(leng)
-
+    plot_bimodal_dist(per_word_auc_data)
     # print(leng)
     # 2) Train logistic regression
     #hits_above(per_word_auc_data)
-    naive_threshold(per_word_auc_data)
+    #naive_threshold(per_word_auc_data)
     #model = train_logistic_regression(per_word_auc_data)
 
   

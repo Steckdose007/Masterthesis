@@ -624,6 +624,40 @@ def only_take_s(words_segments):
     plt.tight_layout()
     plt.show()
 
+def make_heatmap_list(words_segments):
+    # To store per-word results
+    per_word_auc = []
+    dataset_length = len(words_segments)
+
+    # 2. Loop through words
+    for i in tqdm(range(dataset_length), desc="Processing words"):
+    #for i in range(dataset_length):
+
+        segment = words_segments[i]
+        audio = segment.audio_data
+        if(audio.size <= 2048):
+            continue
+        label = segment.label_path  # "normal" or "sigmatism"
+        word = segment.label.lower() # Word for filtering relevant characters
+        corrected_text = word.replace("ÃŸ", "s").replace("ãÿ", "s").replace("Ã¤", "ä").replace("ã¼", "ü").replace("Ã¼", "ü").replace("Ã¶", "ö").replace("ã¤", "ä").lower()
+        # 2.1 Preprocess audio
+        inputs = processor(audio, sampling_rate=16_000, return_tensors="pt", padding=True)
+
+        # 2.2 Get logits and calculate probabilities
+        with torch.no_grad():
+            logits = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
+        
+        # -- Store per-word AUC --
+        per_word_auc.append({
+            "label": corrected_text,  #word for example "sonne"
+            "label_path": label, # sigmatism or normal
+            "path": segment.path, # which file it is from
+            "heatmap": logits[0],
+        })
+
+    #save
+    with open("STT_heatmap_list.pkl", "wb") as f:
+        pickle.dump(per_word_auc, f)
 
 
 if __name__ == "__main__":
@@ -634,7 +668,8 @@ if __name__ == "__main__":
     loader = AudioDataLoader()
     words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
     phones = loader.load_segments_from_pickle("data_lists\phone_without_normalization_16kHz.pkl")
-    interfere_segments(words_segments)
+    make_heatmap_list(words_segments)
+    #interfere_segments(words_segments)
     #area_under_curve_webmouse(words_segments,processor,model,phones)
     #area_under_curve_relative(words_segments,processor,model)
     #area_under_curve(words_segments)
