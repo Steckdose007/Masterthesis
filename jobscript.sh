@@ -1,8 +1,7 @@
 #!/bin/bash -l
 #
 #SBATCH --time=24:00:00
-#SBATCH --partition=a100
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --job-name=job123
 #SBATCH -o /home/hpc/iwb3/iwb3111h/output/slurm-%j.out
@@ -12,4 +11,4 @@ unset SLURM_EXPORT_ENV
 module load python/3.10-anaconda
 source activate train
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/
-python Dataloader_STT.py
+python create_fixed_list.py

@@ -175,61 +175,6 @@ class GradcamDataset(Dataset):
         plt.grid(axis='x', linestyle='--', alpha=0.7)
         plt.show()
 
-
-def visualize_augmentations(audio_data, sample_rate):
-    """
-    Visualize the effects of data augmentation on audio data.
-    
-    Parameters:
-    - audio_data: The original audio signal (numpy array).
-    - sample_rate: The sample rate of the audio signal.
-    """
-    # Define augmentations
-    def add_gaussian_noise(audio_data, noise_level=0.02):
-        noise = np.random.normal(0, noise_level, audio_data.shape)
-        return audio_data + noise
-
-    def time_stretch(audio_data, sample_rate, stretch_factor=1.2):
-        return librosa.effects.time_stretch(audio_data, rate= stretch_factor)
-
-    def pitch_shift(audio_data, sample_rate, n_steps=2):
-        return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
-
-    def random_crop_pad(audio_data, target_length):
-        if len(audio_data) < target_length:
-            # Pad with zeros
-            return np.pad(audio_data, (0, target_length - len(audio_data)), mode='constant')
-        else:
-            # Randomly crop
-            crop_start = np.random.randint(0, len(audio_data) - target_length)
-            return audio_data[crop_start:crop_start + target_length]
-
-    # Target length for cropping/padding
-    target_length = int(0.8 * len(audio_data))  # 80% of original length
-
-    # Apply augmentations
-    augmentations = [
-        ("Original", audio_data),
-        ("Gaussian Noise", add_gaussian_noise(audio_data)),
-        ("Time Stretch (slower)", time_stretch(audio_data, sample_rate, stretch_factor=0.8)),
-        ("Pitch Shift (+2 semitones)", pitch_shift(audio_data, sample_rate, n_steps=2)),
-        ("Random Crop/Pad", random_crop_pad(audio_data, target_length))
-    ]
-
-    # Plot the augmentations
-    plt.figure(figsize=(12, 8))
-    for i, (title, augmented_data) in enumerate(augmentations):
-        plt.subplot(len(augmentations), 1, i + 1)
-        plt.plot(augmented_data, alpha=0.7, label=title)
-        plt.title(title)
-        plt.xlabel("Sample Index")
-        plt.ylabel("Amplitude")
-        plt.legend(loc='upper right')
-        plt.grid()
-
-    plt.tight_layout()
-    plt.show()
-
 def compute_average_spectrum_from_dataset(dataset, target_sample_rate=44100):
 
     spectrums = []

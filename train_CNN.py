@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet
-from audiodataloader import AudioDataLoader, AudioSegment
+from audiodataloader import AudioDataLoader, AudioSegment, find_pairs, split_list_after_speaker
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
 import datetime
@@ -122,39 +122,6 @@ def plot_losses(train_losses, test_losses,best_model_filename,best_test_acc):
     plt.grid(True)
     plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
     plt.show()
-
-def split_list_after_speaker(words_segments):
-    """
-    Groups words to their corresponding speakers and creates train test val split
-    Returns:
-    Train test val split with speakers
-    """
-    # Group word segments by speaker
-    speaker_to_segments = defaultdict(list)
-    for segment in words_segments:
-        speaker = os.path.basename(segment.path).replace('_sig', '')
-        speaker_to_segments[speaker].append(segment)
-    # Get a list of unique speakers
-    speakers = list(speaker_to_segments.keys())
-    print("number speakers: ",np.shape(speakers))
-    # Split speakers into training and testing sets
-    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
-    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
-
-    # Collect word segments for each split
-    segments_train = []
-    segments_test = []
-    segments_val = []
-    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
-
-    for speaker in speakers_train:
-        segments_train.extend(speaker_to_segments[speaker])
-    for speaker in speakers_val:
-        segments_val.extend(speaker_to_segments[speaker])
-    for speaker in speakers_test:
-        segments_test.extend(speaker_to_segments[speaker])
-
-    return segments_train, segments_val, segments_test
 
 
 if __name__ == "__main__":

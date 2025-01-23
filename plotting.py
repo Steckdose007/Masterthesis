@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fft
 from scipy.signal import savgol_filter
+import data_augmentation
+
 def plot_mel_spectrogram(word, phones=None):
 
     signal = word.audio_data
@@ -202,4 +204,39 @@ def compare_spectral_envelopes(word1, word2, n_fft=2048, smoothing_window=51, po
     plt.show()
 
 
+def visualize_augmentations(audio_data, sample_rate):
+    """
+    Visualize the effects of data augmentation on audio data.
+    
+    Parameters:
+    - audio_data: The original audio signal (numpy array).
+    - sample_rate: The sample rate of the audio signal.
+    """
+    
+
+    # Target length for cropping/padding
+    target_length = int(0.8 * len(audio_data))  # 80% of original length
+
+    # Apply augmentations
+    augmentations = [
+        ("Original", audio_data),
+        ("Gaussian Noise", data_augmentation.add_gaussian_noise(audio_data,sample_rate)),
+        ("Time Stretch (slower)", data_augmentation.time_stretch(audio_data, sample_rate)),
+        ("Pitch Shift (+2 semitones)", data_augmentation.pitch_shift(audio_data, sample_rate)),
+        ("Random Crop/Pad", data_augmentation.random_crop_pad(audio_data, sample_rate))
+    ]
+
+    # Plot the augmentations
+    plt.figure(figsize=(12, 8))
+    for i, (title, augmented_data) in enumerate(augmentations):
+        plt.subplot(len(augmentations), 1, i + 1)
+        plt.plot(augmented_data, alpha=0.7, label=title)
+        plt.title(title)
+        plt.xlabel("Sample Index")
+        plt.ylabel("Amplitude")
+        plt.legend(loc='upper right')
+        plt.grid()
+
+    plt.tight_layout()
+    plt.show()
 

@@ -2,7 +2,7 @@ import torch
 import librosa
 from datasets import load_dataset
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-from audiodataloader import AudioDataLoader, AudioSegment
+from audiodataloader import AudioDataLoader, AudioSegment, split_list_after_speaker
 from torch.utils.data import DataLoader
 import random
 import soundfile as sf
