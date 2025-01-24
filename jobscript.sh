@@ -11,4 +11,6 @@ unset SLURM_EXPORT_ENV
 module load python/3.10-anaconda
 source activate train
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/
+export http_proxy=http://proxy:80
+export https_proxy=http://proxy:80
 python create_fixed_list.py

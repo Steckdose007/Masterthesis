@@ -17,7 +17,9 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 class TrainSegment:
     start_time: float
     end_time: float
-    data: np.ndarray
+    mfcc: np.ndarray
+    mel: np.ndarray
+    stt: np.ndarray
     sample_rate: int
     label_word: str  #word for example "sonne"
     label_path: str # sigmatism or normal
@@ -65,9 +67,9 @@ def make_STT_heatmap(audio,processor,model):
 
 
 def create_list(word_segments):
-    #MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
-    #processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
-    #model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+    MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
+    processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
+    model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
     feature_dim={
         "n_mfcc":112, 
         "n_mels":128, 
@@ -76,7 +78,7 @@ def create_list(word_segments):
         "n_fft":2048,
         "target_length": 224
     }
-    output_file = "MFCC_list.pkl"
+    output_file = "mother_list.pkl"
     data = []
     for entry in tqdm(word_segments):
         start_time = entry.start_time
@@ -91,22 +93,24 @@ def create_list(word_segments):
         audio_noise = data_augmentation.add_gaussian_noise(audio_normal,sample_rate)
         audio_pitch = data_augmentation.pitch_shift(audio_normal,sample_rate)
         """mel specto"""
-        #feature_normal = compute_melspectogram_features(audio_normal,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
-        #feature_noise = compute_melspectogram_features(audio_noise,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
-        #feature_pitch = compute_melspectogram_features(audio_pitch,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_normal_mel = compute_melspectogram_features(audio_normal,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_noise_mel = compute_melspectogram_features(audio_noise,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_pitch_mel = compute_melspectogram_features(audio_pitch,sample_rate,feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
         """mfcc"""
-        feature_normal = compute_mfcc_features(audio_normal,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
-        feature_noise = compute_mfcc_features(audio_noise,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
-        feature_pitch = compute_mfcc_features(audio_pitch,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_normal_mfcc = compute_mfcc_features(audio_normal,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_noise_mfcc = compute_mfcc_features(audio_noise,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
+        feature_pitch_mfcc = compute_mfcc_features(audio_pitch,sample_rate,feature_dim["n_mfcc"],feature_dim["n_mels"],feature_dim["frame_size"],feature_dim["hop_size"],feature_dim["n_fft"])
         """STT"""
-        #feature_normal = make_STT_heatmap(audio_normal,processor,model)
-        #feature_noise = make_STT_heatmap(audio_noise,processor,model)
-        #feature_pitch = make_STT_heatmap(audio_pitch,processor,model)
+        feature_normal_stt = make_STT_heatmap(audio_normal,processor,model)
+        feature_noise_stt = make_STT_heatmap(audio_noise,processor,model)
+        feature_pitch_stt = make_STT_heatmap(audio_pitch,processor,model)
 
         featur_object = TrainSegment(
             start_time = start_time,
             end_time = end_time,
-            data = feature_normal,
+            mfcc = feature_normal_mfcc,
+            mel = feature_normal_mel,
+            stt = feature_normal_stt,
             sample_rate = sample_rate,
             label_word = label_word,
             label_path = label_path,
@@ -115,7 +119,9 @@ def create_list(word_segments):
         featur_object_noise = TrainSegment(
             start_time = start_time,
             end_time = end_time,
-            data = feature_noise,
+            mfcc = feature_noise_mfcc,
+            mel = feature_noise_mel,
+            stt = feature_noise_stt,            
             sample_rate = sample_rate,
             label_word = label_word,
             label_path = label_path,
@@ -124,7 +130,9 @@ def create_list(word_segments):
         featur_object_pitch = TrainSegment(
             start_time = start_time,
             end_time = end_time,
-            data = feature_pitch,
+            mfcc = feature_pitch_mfcc,
+            mel = feature_pitch_mel,
+            stt = feature_pitch_stt,            
             sample_rate = sample_rate,
             label_word = label_word,
             label_path = label_path,
@@ -199,7 +207,7 @@ if __name__ == "__main__":
 
     # Load preprocessed audio segments from a pickle file
     #phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists\words_normalized_16kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists/words_normalized_16kHz.pkl")
     #word = words_segments[100]
     #plotting.visualize_augmentations(word.audio_data,word.sample_rate)
     #augment_audio_list(words_segments[:60])
