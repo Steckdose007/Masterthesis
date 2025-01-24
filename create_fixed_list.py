@@ -1,5 +1,5 @@
 import torch
-from audiodataloader import AudioDataLoader, AudioSegment
+from audiodataloader import AudioDataLoader, AudioSegment,split_list_after_speaker
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,7 +8,8 @@ import librosa
 from dataclasses import dataclass
 import data_augmentation
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-
+from sklearn.preprocessing import MinMaxScaler
+import cv2
 
 
 
@@ -198,6 +199,50 @@ def augment_audio_list(word_segments):
     with open(output_file, 'wb') as f:
         pickle.dump(data, f)
 
+def compute_mean_sdt_for_normalization_audio(data):
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    train_samples = []
+    for f in segments_train:
+        train_samples.append(f.audio_data)
+    print(np.shape(train_samples))
+    train_samples = np.concatenate(train_samples)
+    train_mean = np.mean(train_samples)
+    train_std = np.std(train_samples)
+    print("train_mean:", train_mean, " train_std:", train_std)
+
+def compute_mean_std_for_mfccormel_normalization(words_list):
+    segments_train, segments_val, segments_test= split_list_after_speaker(words_list)
+    
+    resized_mfccs = [cv2.resize(segment.mel, (224,224), interpolation=cv2.INTER_LINEAR)  for segment in segments_train]  
+    # Concatenate all MFCC frames across all segments
+    all_mfcc_frames  = np.concatenate(resized_mfccs)
+    
+    # Step 1: Scale each MFCC frame between 0 and 1
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    all_mfcc_scaled = scaler.fit_transform(all_mfcc_frames)
+    # Step 2: Compute global mean and standard deviation
+    global_mean = np.mean(all_mfcc_scaled)
+    global_std = np.std(all_mfcc_scaled)
+    print("global_mean  :  ",global_mean)
+    print("global_std  :  ",global_std)
+
+def compute_mean_std_for_stt_normalization(words_list):
+    segments_train, segments_val, segments_test= split_list_after_speaker(words_list)
+    print()
+    resized_mfccs = [cv2.resize(segment.stt.detach().cpu().numpy()[0], (224,224), interpolation=cv2.INTER_LINEAR)  for segment in segments_train]  
+    # Concatenate all MFCC frames across all segments
+    all_mfcc_frames  = np.concatenate(resized_mfccs)
+    
+    # Step 1: Scale each MFCC frame between 0 and 1
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    all_mfcc_scaled = scaler.fit_transform(all_mfcc_frames)
+    # Step 2: Compute global mean and standard deviation
+    global_mean = np.mean(all_mfcc_scaled)
+    global_std = np.std(all_mfcc_scaled)
+    print("global_mean  :  ",global_mean)
+    print("global_std  :  ",global_std)
+
+
 if __name__ == "__main__":
     #============================create fixedlists ==========================================
     # Before change what you want to have in the dataloader
@@ -207,8 +252,12 @@ if __name__ == "__main__":
 
     # Load preprocessed audio segments from a pickle file
     #phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists/words_normalized_16kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists/mother_list.pkl")
+    print(np.shape(words_segments))
+    word = words_segments[10000]
+    print(np.shape(word.mfcc),np.shape(word.mel),np.shape(word.stt.detach().cpu().numpy()[0]))
+    compute_mean_std_for_stt_normalization(words_segments)
     #word = words_segments[100]
     #plotting.visualize_augmentations(word.audio_data,word.sample_rate)
     #augment_audio_list(words_segments[:60])
-    create_list(words_segments)
+    #create_list(words_segments)

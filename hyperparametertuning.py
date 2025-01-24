@@ -2,31 +2,26 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from model import CNNMFCC  , initialize_mobilenet
-from audiodataloader import AudioDataLoader, AudioSegment
+from model import CNNMFCC  , initialize_mobilenet,initialize_mobilenetV3
+from audiodataloader import AudioDataLoader, AudioSegment,split_list_after_speaker
 from Dataloader_pytorch import AudioSegmentDataset 
 import optuna
 from optuna.visualization import plot_param_importances,plot_parallel_coordinate
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from collections import defaultdict
-import os
 from  Dataloader_fixedlist import FixedListDataset
 import numpy as np
-from optuna.pruners import MedianPruner
+from optuna.pruners import MedianPruner, PatientPruner
 import pickle
 import pandas as pd
+from create_fixed_list import TrainSegment
+
 # Global dataset variable
 
 def prepare_dataset():
-    with open("segments_train_mfcc.pkl", "rb") as f:
+    with open("data_lists/mother_list.pkl", "rb") as f:
         data = pickle.load(f)
-    with open("segments_val_mfcc.pkl", "rb") as f:
-        data1 = pickle.load(f)
-    # Create dataset 
-    segments_train = FixedListDataset(data)
-    segments_val = FixedListDataset(data1)
 
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
     
     return segments_train,segments_val
 
@@ -38,12 +33,15 @@ def objective(trial):
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
+    dropout_rate = trial.suggest_float("dropout",0.1,0.6)
     
     # (Optional) If using SGD, tune momentum as well
     if optimizer_name == "SGD":
         momentum = trial.suggest_float("momentum", 0.0, 0.95)
     else:
         momentum = 0.0  # Not used, but defined for clarity
+        weight_decay = trial.suggest_float("weight_decay",1e-5, 1e-3, log=True)
+
 
     # ===== Device configuration =====
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -52,14 +50,16 @@ def objective(trial):
     # Assuming you have already defined `segments_train`, `segments_val`
     # which are instances of some Dataset. 
     segments_train, segments_val = prepare_dataset()
+    segments_train = FixedListDataset(segments_train)
+    segments_val = FixedListDataset(segments_val)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
 
     # ===== Initialize model =====
     # Example: a simple MobileNet or any other model
     num_classes = 2
-    input_channels = 1
-    model = initialize_mobilenet(num_classes, input_channels).to(device)
+    input_channels = 2
+    model = initialize_mobilenetV3(num_classes,dropout_rate, input_channels).to(device)
     
     # ===== Define loss and optimizer =====
     criterion = nn.CrossEntropyLoss()
@@ -69,14 +69,14 @@ def objective(trial):
                               lr=learning_rate, 
                               momentum=momentum)
     else:
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
     num_epochs = 50  
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs), desc="Processing words"):
         # --- Train ---
         model.train()
         for inputs, labels in train_loader:
@@ -133,7 +133,7 @@ def optimize_with_progress(study, objective, n_trials):
 
 if __name__ == "__main__":
     # Create Optuna study
-    study = optuna.create_study(direction='minimize', pruner=MedianPruner())
+    study = optuna.create_study(direction='minimize', pruner=PatientPruner(MedianPruner(n_startup_trials=5), patience=4))
     # Optimize 
     optimize_with_progress(study, objective, n_trials=50)    
     print("Best trial:")
@@ -144,16 +144,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("best_hyperparameters_mfcc.txt", "w") as f:
+    with open("best_hyperparameters_STTandMEL.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("param_importances_mfcc.png")
-    fig1 = plot_parallel_coordinate(study,target_name="validation loss")
-    fig1.write_image("plot_parallel_coordinate_mfcc.png")
+    fig.write_image("param_importances_STTandMEL.png")
+    fig1 = plot_parallel_coordinate(study,target_name="validation loss", include_pruned=True)
+    fig1.write_image("plot_parallel_coordinate_STTandMEL.png")
 
     trials_data = []
     for t in study.trials:
@@ -169,4 +169,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("all_trials_results_mfcc.csv", index=False)
+    df.to_csv("all_trials_results_STTandMEL.csv", index=False)
