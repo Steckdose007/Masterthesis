@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
-from audiodataloader import AudioDataLoader, AudioSegment
+from audiodataloader import AudioDataLoader, AudioSegment, find_pairs, split_list_after_speaker
 import random
 import cv2
 from tqdm import tqdm  
@@ -133,9 +133,9 @@ class AudioSegmentDataset(Dataset):
         mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=n_mels,n_fft=n_fft,hop_length=hop_length,win_length=frame_length)
         mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
 
-        mel_spectrogram_db_normalized = (mel_spectrogram_db + 80) / 80
-        normalized_spectrogram = (mel_spectrogram_db_normalized - 0.485) / 0.229
-        return normalized_spectrogram
+        #mel_spectrogram_db_normalized = (mel_spectrogram_db + 80) / 80
+        #normalized_spectrogram = (mel_spectrogram_db_normalized - 0.485) / 0.229
+        return mel_spectrogram_db
     
     def normalize_mfcc(self,mfcc):
         """
@@ -215,19 +215,6 @@ class AudioSegmentDataset(Dataset):
         #print(f"Resized MFCC shape: {resized_mfcc.shape}")
         return resized_mfcc
 
-    def find_pairs(self,segment,phones_segments):
-
-        phones =["z","s","Z","S","ts"]
-        phones_list = []
-       
-        if(phones_segments):
-            for phone in phones_segments:
-                if (phone.label in phones and
-                    phone.path == segment.path and
-                    phone.sample_rate == segment.label):
-                    phones_list.append(phone)
-        return  phones_list
-    
 # Define a function to process the dataset and save it
 def process_and_save_dataset(words_segments,phones_segments, output_file):
     """

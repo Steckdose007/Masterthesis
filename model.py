@@ -1,8 +1,8 @@
 # model.py
 import torch
 import torch.nn as nn
-from torchvision.models import mobilenet_v2
-from torchvision.models import mobilenet_v3_small, mobilenet_v3_large
+from torchvision.models import mobilenet_v2,MobileNet_V2_Weights
+from torchvision.models import mobilenet_v3_small, mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 
 class CNN1D(nn.Module):
@@ -46,9 +46,7 @@ class CNN1D(nn.Module):
         # Apply softmax to get probabilities
         #x = torch.softmax(x, dim=1)
         return x
-    
-
-    
+       
 class CNNMFCC(nn.Module):
     def __init__(self, num_classes, n_mfcc, target_frames, kernel_size=(5, 5), dropout_rate=0.3):
         super(CNNMFCC, self).__init__()
@@ -151,9 +149,9 @@ class modelSST(nn.Module):
 
         return x
 
-def initialize_mobilenet(num_classes, input_channels=1):
+def initialize_mobilenet(num_classes,dropout, input_channels=1):
 
-    model = mobilenet_v2(weights=True)  # Load pretrained MobileNetV2
+    model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT,dropout = dropout)  # Load pretrained MobileNetV2
 
     # Modify the first convolutional layer to accept my 2D mfcc with only one channel. No rgb
     if input_channels != 3:
@@ -164,10 +162,10 @@ def initialize_mobilenet(num_classes, input_channels=1):
 
     return model
 
-def initialize_mobilenetV3(num_classes, input_channels=1):
+def initialize_mobilenetV3(num_classes,dropout, input_channels=2 ):
 
     #model = mobilenet_v2(weights=True)  # Load pretrained MobileNetV2
-    model = mobilenet_v3_small(pretrained=True)
+    model = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT,dropout = dropout)
     # Modify the first convolutional layer to accept my 2D mfcc with only one channel. No rgb
     first_conv = model.features[0][0]  # Conv2d
     new_conv = nn.Conv2d(
@@ -180,41 +178,10 @@ def initialize_mobilenetV3(num_classes, input_channels=1):
     )
     model.features[0][0] = new_conv
     # Adjust the final classifier to match the number of classes
-    model.classifier[3] = nn.Linear(in_features=1024, out_features=num_classes)
-    return model
-
-def initialize_mobilenetv3_large(num_classes, input_channels=1):
-    """
-    1) Loads a pretrained MobileNetV3 Large
-    2) Modifies the first conv layer to accept 'input_channels' instead of 3
-    3) Replaces the final classifier layer with a new one for 'num_classes'
-    """
-    model = mobilenet_v3_large(pretrained=True)
-    
-    # --- 1) Modify the first conv layer ---
-    # Typically: model.features[0] = ConvBNActivation(in_ch=3, out_ch=16, ...)
-    # We only replace the [0] submodule (the Conv2d):
-    first_conv = model.features[0][0]  # The Conv2d in the first block
-    new_conv = nn.Conv2d(
-        in_channels=input_channels,                  # from 1 or 3, etc.
-        out_channels=first_conv.out_channels,        # typically 16
-        kernel_size=first_conv.kernel_size,
-        stride=first_conv.stride,
-        padding=first_conv.padding,
-        bias=False
-    )
-    model.features[0][0] = new_conv
-
-    # --- 2) Replace the final classification layer ---
-    # For mobilenet_v3_large, the classifier is something like:
-    # model.classifier = nn.Sequential(
-    #   (0): Linear(in_features=960, out_features=1280, bias=True),
-    #   (1): Hardswish(),
-    #   (2): Dropout(p=0.2, inplace=True),
-    #   (3): Linear(in_features=1280, out_features=1000, bias=True)
-    # )
-    #
-    # So we replace the last Linear (index 3) with our new Linear:
     model.classifier[3] = nn.Linear(in_features=1280, out_features=num_classes)
-
     return model
+
+# num_classes = 2
+# input_channels = 1
+# model = initialize_mobilenetV3(num_classes,0.5 ,input_channels)
+# print(model)

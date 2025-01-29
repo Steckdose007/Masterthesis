@@ -2,7 +2,7 @@ import torch
 import librosa
 from datasets import load_dataset
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-from audiodataloader import AudioDataLoader, AudioSegment
+from audiodataloader import AudioDataLoader, AudioSegment, split_list_after_speaker
 from torch.utils.data import DataLoader
 import random
 import soundfile as sf
@@ -74,7 +74,7 @@ def interfere_segments(words_segments):
     probs = F.softmax(logits, dim=-1)
     print_outputs(probs,segment.label,segment.label_path)
 
-    s_token_id = processor.tokenizer.convert_tokens_to_ids("S")
+    s_token_id = processor.tokenizer.convert_tokens_to_ids("s")
     s_probs = probs[0, :, s_token_id]
 
     print("Shape of s_probs:", s_probs.shape)
@@ -87,6 +87,7 @@ def interfere_segments(words_segments):
     print("-" * 100)
     print("Reference:", segment.label)
     print("Prediction:", predicted_sentences)
+    plt.show()
 
 def print_outputs(output,label_word,label_path):
     
@@ -117,9 +118,7 @@ def print_outputs(output,label_word,label_path):
     plt.xlabel("Time Steps")
     plt.ylabel("Vocab Index")
     plt.colorbar(label="Logit Value")
-
     plt.tight_layout()
-    plt.show()
 
     """Plot prediction for s over time"""
     # 1. Convert logits -> probabilities
@@ -145,7 +144,6 @@ def print_outputs(output,label_word,label_path):
     plt.title("Probability of 'S' Across Time Steps")
     plt.legend()
     plt.tight_layout()
-    plt.show()
 
 def area_under_curve(words_segments):
     """
@@ -181,13 +179,13 @@ def area_under_curve(words_segments):
         # 2.3 Extract probabilities and calculate AUC for characters present in the word
         for char in ["s", "x", "z"]:
             if char in corrected_text:  # Only process if the character is in the word
-                num_s = corrected_text.count('char')
+                #num_s = corrected_text.count('char')
                 token_id = processor.tokenizer.convert_tokens_to_ids(char)
                 if token_id is None:
                     raise ValueError(f"Token '{char}' not found in vocabulary.")
-                print(token_id,char)
+                #print(token_id,char)
                 char_probs = probs[:, token_id].cpu().numpy()  # [time_steps]
-                auc = np.sum(char_probs)/num_s  # Area under the curve (AUC)
+                auc = np.sum(char_probs)#/num_s  # Area under the curve (AUC)
 
                 sum_logits = np.sum(logits[0][:, token_id].cpu().numpy())
                 # 2.4 Store AUC in the corresponding dictionary
@@ -240,7 +238,6 @@ def area_under_curve(words_segments):
         plt.legend()
         plt.tight_layout()
         plt.show()
-
 
 def area_under_curve_relative(words_segments, processor, model):
     """
@@ -627,6 +624,40 @@ def only_take_s(words_segments):
     plt.tight_layout()
     plt.show()
 
+def make_heatmap_list(words_segments):
+    # To store per-word results
+    per_word_auc = []
+    dataset_length = len(words_segments)
+
+    # 2. Loop through words
+    for i in tqdm(range(dataset_length), desc="Processing words"):
+    #for i in range(dataset_length):
+
+        segment = words_segments[i]
+        audio = segment.audio_data
+        if(audio.size <= 2048):
+            continue
+        label = segment.label_path  # "normal" or "sigmatism"
+        word = segment.label.lower() # Word for filtering relevant characters
+        corrected_text = word.replace("ÃŸ", "s").replace("ãÿ", "s").replace("Ã¤", "ä").replace("ã¼", "ü").replace("Ã¼", "ü").replace("Ã¶", "ö").replace("ã¤", "ä").lower()
+        # 2.1 Preprocess audio
+        inputs = processor(audio, sampling_rate=16_000, return_tensors="pt", padding=True)
+
+        # 2.2 Get logits and calculate probabilities
+        with torch.no_grad():
+            logits = model(inputs.input_values, attention_mask=inputs.attention_mask).logits
+        
+        # -- Store per-word AUC --
+        per_word_auc.append({
+            "label": corrected_text,  #word for example "sonne"
+            "label_path": label, # sigmatism or normal
+            "path": segment.path, # which file it is from
+            "heatmap": logits[0],
+        })
+
+    #save
+    with open("STT_heatmap_list.pkl", "wb") as f:
+        pickle.dump(per_word_auc, f)
 
 
 if __name__ == "__main__":
@@ -637,10 +668,11 @@ if __name__ == "__main__":
     loader = AudioDataLoader()
     words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
     phones = loader.load_segments_from_pickle("data_lists\phone_without_normalization_16kHz.pkl")
+    make_heatmap_list(words_segments)
     #interfere_segments(words_segments)
     #area_under_curve_webmouse(words_segments,processor,model,phones)
     #area_under_curve_relative(words_segments,processor,model)
-    area_under_curve(words_segments)
+    #area_under_curve(words_segments)
     #only_take_s(words_segments)
 
 

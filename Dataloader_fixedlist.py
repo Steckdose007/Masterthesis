@@ -18,7 +18,8 @@ import os
 from data_augmentation import apply_augmentation
 import torchvision.transforms as transforms
 import torch.nn.functional as F
-
+from create_fixed_list import TrainSegment
+from sklearn.preprocessing import MinMaxScaler
 
 @dataclass
 class AudioSegment:
@@ -41,13 +42,13 @@ class FixedListDataset(Dataset):
         """
         self.audio_segments = audio_segments
         self.transforms  = transforms.Compose([
-                            #transforms.ToTensor(),
                             #transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
                             #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
                             #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
                             #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
-                            transforms.Normalize(mean=[0.5595994632236891], std=[0.08789908058262823])  # Normalize between -1 and 1
-])
+                            transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556])  
+                            ])
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
 
     def __len__(self):
         return len(self.audio_segments)
@@ -55,51 +56,49 @@ class FixedListDataset(Dataset):
     def __getitem__(self, idx):
         object = self.audio_segments[idx]
 
-        heatmap = object["heatmap"]
-
-        time_steps, vocab_size = heatmap.shape
-    
-        if time_steps < 84:
-            # Amount to pad in the 'time_steps' dimension
-            pad_amount = 84 - time_steps
-            heatmap = F.pad(heatmap, pad=(0, 0, 0, pad_amount), mode='constant', value=0)
-        heatmap = heatmap.unsqueeze(0).unsqueeze(0)
-        #print(heatmap.shape)
-        #then resize both
-        heatmap = F.interpolate(heatmap,size = (224, 224)).squeeze(0)
-        heatmap = (heatmap - (-25.749231)) / 43.0570068459375
-        label = 0
-        #print(heatmap.shape)
-        label_str = object["label_path"]
         
+        # ===== Process STT Feature =====
+        stt_feature = object.stt.detach().cpu().numpy()[0]  # Assuming STT feature is available
+        stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
+
+        # ===== Process MFCC (Mel) Feature =====
+        mel_feature = object.mel  # Assuming `mel` is your MFCC feature
+        mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+
+        # ===== Stack Features =====
+        stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
+
+        label = 0
+        label_str = object.label_path
         if label_str == "sigmatism":
              label = 1
         #print("processed",processed_object.shape)
-
-        heatmap = self.transforms(heatmap)
+        featur_tensor = torch.tensor(stacked_features, dtype=torch.float32).unsqueeze(0)
+        feature_normalized = self.transforms(featur_tensor) 
         #print(transformed_mfcc.shape)
-        return  heatmap,label
+        return  feature_normalized,label
 
 
 
 
 if __name__ == "__main__":
 
-    with open("STT_csv\per_word_auc_values.pkl", "rb") as f:
+    with open("data_lists/mother_list.pkl", "rb") as f:
         data = pickle.load(f)
     # Create dataset 
-    segments_test = FixedListDataset(data)
-    logits,label = segments_test[10] 
-    print(type(logits)) 
+    segments_test = FixedListDataset(data[:10])
+    logits,label = segments_test[5] 
+    print(type(logits),logits.shape) 
     resized_array = logits.squeeze().detach().numpy()
 
     # Plot the resized logits as an image
     plt.figure(figsize=(10, 6))
-    plt.imshow(resized_array, aspect='auto', origin='lower', cmap='viridis')
-    plt.colorbar(label='Logit Intensity')
-    plt.title("Resized Logits Visualization")
-    plt.xlabel("Feature Dimension (Vocab Size)")
-    plt.ylabel("Time Steps")
+    plt.imshow(resized_array, aspect='auto', origin='lower', cmap='plasma')
+    plt.colorbar(label='Intensity')
     plt.tight_layout()
     plt.show()
     

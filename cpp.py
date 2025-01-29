@@ -8,6 +8,7 @@ from acoustics.cepstrum import inverse_complex_cepstrum
 from acoustics.cepstrum import minimum_phase
 from audiodataloader import AudioDataLoader, AudioSegment
 import os
+import pickle
 import random
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 import pandas as pd
@@ -15,6 +16,11 @@ from scipy import linalg
 import scipy.stats as stats
 import warnings
 from tqdm import tqdm 
+from sklearn.model_selection import train_test_split
+from collections import defaultdict
+import torch
+import torch.nn.functional as F
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from frechet_audio_distance  import FrechetAudioDistance  
 
 def compute_mean_and_cov(features: np.ndarray):
@@ -577,7 +583,44 @@ def fid_plotting_randompairs(words_segments, n_pairs=10):
     plt.title(f"Distribution of FIDs for Random Word Pairs")
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.show()
+
+def compute_fid_for_heatmap(data, sample_rate=16000):
+    """
+    Compute FID between normal and sigmatism speech using Wav2Vec2 logits.
+    Args:
+        words_segments (list): List of word segments with labels 'normal' or 'sigmatism'.
+        sample_rate (int): Sample rate of the audio.
+    Returns:
+        fid: Fréchet distance between normal and sigmatism
+    """
+    normal_logits = []
+    sigmatism_logits = []
     
+    for word in tqdm(data, desc="Processing words"):
+        label = word["label_path"]
+        logits_flat = word["heatmap"].mean(axis=0)  # Shape: (vocab_size,)
+        
+        # Separate into normal and sigmatism groups
+        if label == "normal":
+            normal_logits.append(logits_flat)
+        elif label == "sigmatism":
+            sigmatism_logits.append(logits_flat)
+
+    # Convert to NumPy arrays
+    normal_array = np.vstack(normal_logits)
+    sigmatism_array = np.vstack(sigmatism_logits)
+    print(np.shape(normal_array))
+    # Compute mean and covariance for each category
+    mu1, sigma1 = compute_mean_and_cov(normal_array)
+    mu2, sigma2 = compute_mean_and_cov(sigmatism_array)
+    print("mu1 shape:", mu1.shape)
+    print("sigma1 shape:", sigma1.shape)
+    print("mu2 shape:", mu2.shape)
+    print("sigma2 shape:", sigma2.shape)
+    # Compute FID
+    fid = frechet_distance(mu1, sigma1, mu2, sigma2)
+    print("FID score with heatmap STT:", fid)
+    return fid    
 
 def FAD_libary():
     SAMPLE_RATE = 16000  # VGGish and many other models often assume 16kHz
@@ -603,11 +646,166 @@ def FAD_libary():
     fad_score = frechet.score(ref_dir, gen_dir)
     print("FAD score with model:", fad_score)
 
+def compute_fid_hidden_features(words_segments, sample_rate=16000, layer=-1):
+    """
+    Compute FID between normal and sigmatism speech using features from a specific Wav2Vec2 layer.
+    Args:
+        words_segments (list): List of word segments with labels 'normal' or 'sigmatism'.
+        sample_rate (int): Sampling rate of the audio.
+        layer (int): Which hidden layer to extract features from (-1 = last feature layer).
+    Returns:
+        fid: Fréchet distance between normal and sigmatism.
+    """
+    normal_features = []
+    sigmatism_features = []
+    MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
+    processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
+    model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+    batch_size=64
+    # Process in batches
+    for i in tqdm(range(0, len(words_segments), batch_size)):
+        batch = words_segments[i:i + batch_size]
+        batch_features = []
+        
+        for word in batch:
+            audio = word.audio_data
+            label = word.label_path  # 'normal' or 'sigmatism'
+            
+            # Extract padded features
+            padded_features = extract_features(audio, sample_rate,processor,model, layer=layer)
+            batch_features.append(padded_features.flatten())  # Flatten each feature
+            
+            # Append to the respective group
+            if label == "normal":
+                normal_features.append(batch_features[-1])
+            elif label == "sigmatism":
+                sigmatism_features.append(batch_features[-1])
+    
+    # Compute mean and covariance for normal and sigmatism
+    mu1, sigma1 = compute_mean_and_cov_batch(normal_features)
+    mu2, sigma2 = compute_mean_and_cov_batch(sigmatism_features)
+    
+    # Compute FID
+    fid = frechet_distance(mu1, sigma1, mu2, sigma2)
+    print("FID score with hiddenlayer STT batch:", fid)
+
+    return fid
+
+def extract_features(audio: np.ndarray, sample_rate: int,processor, model, layer: int = -1):
+    """
+    Extract features from a specific layer of the Wav2Vec2 model.
+    Args:
+        audio (np.ndarray): Input audio signal.
+        sample_rate (int): Sampling rate of the audio.
+        layer (int): Which layer to extract features from (-1 = last hidden layer).
+    Returns:
+        features (np.ndarray): Hidden layer features of shape (time_steps, hidden_dim).
+    """
+    
+    # Preprocess audio
+    inputs = processor(audio, sampling_rate=sample_rate, return_tensors="pt", padding=True)
+    
+    # Forward pass with hidden states
+    with torch.no_grad():
+        outputs = model(**inputs, output_hidden_states=True)
+    
+    # Get hidden states
+    hidden_states = outputs.hidden_states  # Tuple of tensors, one per layer
+    features = hidden_states[layer].squeeze(0).numpy()  # Shape: (time_steps, hidden_dim) (35,1024)
+    time_steps, hidden_dim = features.shape
+    target_time_steps: int = 84
+    if time_steps == target_time_steps:
+        return features
+    elif time_steps > target_time_steps:
+        # Truncate to the first `target_time_steps`
+        return features[:target_time_steps, :]
+    else:
+        # Pad with zeros to reach `target_time_steps`
+        padding = np.zeros((target_time_steps - time_steps, hidden_dim))
+        return np.vstack([features, padding])
+    
+def compute_mean_and_cov_batch(features_list):
+    """
+    Compute mean and covariance incrementally from a list of feature arrays.
+    Args:
+        features_list (list): List of feature arrays for each batch.
+    Returns:
+        mean (np.ndarray): Mean vector of shape (embed_dim,).
+        cov (np.ndarray): Covariance matrix of shape (embed_dim, embed_dim).
+    """
+    # Initialize variables
+    total_samples = 0
+    mean_accum = 0
+    cov_accum = 0
+    
+    for features in features_list:
+        total_samples += features.shape[0]
+        mean_batch = features.mean(axis=0)  # Mean for this batch
+        cov_batch = np.cov(features, rowvar=False)  # Covariance for this batch
+        
+        # Incrementally update the total mean
+        mean_accum += mean_batch * features.shape[0]
+        
+        # Incrementally update the covariance
+        cov_accum += cov_batch * features.shape[0]
+    
+    # Normalize mean and covariance
+    mean = mean_accum / total_samples
+    cov = cov_accum / total_samples
+    
+    return mean, cov
+
+def load_per_word_auc(pickle_path):
+    with open(pickle_path, "rb") as f:
+        data = pickle.load(f)
+    return data
+
+def split_list_after_speaker(words_segments):
+    """
+    Groups words to their corresponding speakers and creates train test val split
+    Returns:
+    Train test val split with speakers
+    """
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        normalized_path = segment.path.replace("\\", "/")
+        #print(normalized_path)
+        _, filename = os.path.split(normalized_path)
+        #print(filename)
+        speaker = filename.replace('_sig', '')
+        #print(speaker)
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.05)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.15)
+
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    segments_val = []
+    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+    for speaker in speakers_val:
+        segments_val.extend(speaker_to_segments[speaker])
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+
+    return segments_train, segments_val, segments_test
 
 if __name__ == "__main__":
+
+    per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
+    compute_fid_for_heatmap(per_word_auc_data)
+
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists\words_normalized_16kHz.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
     mfcc_dim={
         "n_mfcc":128, 
         "n_mels":128, 
@@ -616,17 +814,19 @@ if __name__ == "__main__":
         "n_fft":2048,
         "target_length": 224
     }
-    segments = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= False)
-    mu1, sigma1 = compute_mean_and_cov(words_segments[0].audio_data)
-    mu2, sigma2 = compute_mean_and_cov(words_segments[0].audio_data)
-    eps=1e-6
-    fid_value = frechet_distance(mu1, sigma1, mu2, sigma2, eps=eps)
-    print(fid_value)
-    fid_plotting_randompairs(words_segments,3000)
+    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+    compute_fid_hidden_features(segments_val)
+    #segments = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= False)
+    #mu1, sigma1 = compute_mean_and_cov(words_segments[0].audio_data)
+    #mu2, sigma2 = compute_mean_and_cov(words_segments[0].audio_data)
+    #eps=1e-6
+    #fid_value = frechet_distance(mu1, sigma1, mu2, sigma2, eps=eps)
+    #print(fid_value)
+    #fid_plotting_randompairs(words_segments,3000)
     #FAD_libary() # use method with model
     #compare_sonne_pairs(words_segments)
-    fid_plotting(words_segments) 
+    #fid_plotting(words_segments) 
     #paired_t_test(words_segments)
-    word = words_segments[0]
+    #word = words_segments[0]
     #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 400], trendline_quefrency_range=[0.0001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
     #get_cppplots_per_speaker_and_disorder(words_segments)

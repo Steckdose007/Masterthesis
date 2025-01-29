@@ -2,12 +2,11 @@ import librosa
 import numpy as np
 import random
 import librosa
-
 import random
 
 
-def add_gaussian_noise(audio_data,sample_rate, noise_level=0.01):
-    noise = np.random.normal(0, noise_level, audio_data.shape)
+def add_gaussian_noise(audio_data,sample_rate= 16000, noise_level=0.002):
+    noise = np.random.normal(0.00001, noise_level, audio_data.shape)
     return audio_data + noise
 
 def time_stretch(audio_data, sample_rate):
@@ -24,7 +23,7 @@ def pitch_shift(audio_data, sample_rate):
     Shift the pitch of the audio up or down.
     """
     if audio_data.size >= 2048:
-        n_steps = random.randint(-2, 2)  # Shift pitch by up to 2 semitones
+        n_steps = random.uniform(-3, 2)  # Shift pitch by up to -3 to 2 semitones
         return librosa.effects.pitch_shift(audio_data, sr=sample_rate, n_steps=n_steps)
     return add_gaussian_noise(audio_data,sample_rate)
     
