@@ -41,12 +41,12 @@ class FixedListDataset(Dataset):
         """
         self.audio_segments = audio_segments
         self.transforms  = transforms.Compose([
-                            transforms.ToTensor(),
+                            #transforms.ToTensor(),
                             #transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
                             #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
                             #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
                             #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
-                            transforms.Normalize(mean=[0.5], std=[0.5])  # Normalize between -1 and 1
+                            transforms.Normalize(mean=[0.5595994632236891], std=[0.08789908058262823])  # Normalize between -1 and 1
 ])
 
     def __len__(self):
@@ -67,6 +67,7 @@ class FixedListDataset(Dataset):
         #print(heatmap.shape)
         #then resize both
         heatmap = F.interpolate(heatmap,size = (224, 224)).squeeze(0)
+        heatmap = (heatmap - (-25.749231)) / 43.0570068459375
         label = 0
         #print(heatmap.shape)
         label_str = object["label_path"]
@@ -75,9 +76,10 @@ class FixedListDataset(Dataset):
              label = 1
         #print("processed",processed_object.shape)
 
-        #transformed_mfcc = self.transforms(processed_object.squeeze())
+        heatmap = self.transforms(heatmap)
         #print(transformed_mfcc.shape)
         return  heatmap,label
+
 
 
 

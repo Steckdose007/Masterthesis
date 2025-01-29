@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D , CNNMFCC,initialize_mobilenet,initialize_mobilenetV3
+from model import CNN1D , CNNMFCC,initialize_mobilenet,initialize_mobilenetV3, initialize_mobilenetv3_large
 from audiodataloader import AudioDataLoader, AudioSegment
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
@@ -184,14 +184,14 @@ if __name__ == "__main__":
     Hyperparameters={
         "gamma": 0.8765847276000667,
         "step_size": 35,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.00001,
         "batch_size": 16,
         "momentum": 0.11750923074076126,
     }
     n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  #  binary classification for sigmatism
     learning_rate = Hyperparameters["learning_rate"]
-    num_epochs = 100
+    num_epochs = 50
     batch_size = Hyperparameters["batch_size"]
     step_size = Hyperparameters["step_size"]
     gamma=Hyperparameters["gamma"]
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     model = initialize_mobilenetV3(num_classes, input_channels).to(device)
     #model = CNNMFCC(num_classes, n_mfcc,target_length).to(device)  
     criterion = nn.CrossEntropyLoss()  
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)

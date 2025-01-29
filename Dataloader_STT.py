@@ -116,7 +116,7 @@ def split_list_after_speaker(words_segments):
     # Group word segments by speaker
     speaker_to_segments = defaultdict(list)
     for segment in words_segments:
-        normalized_path = segment.path.replace("\\", "/")
+        normalized_path = segment["path"].replace("\\", "/")
         #print(normalized_path)
         _, filename = os.path.split(normalized_path)
         #print(filename)
@@ -216,30 +216,91 @@ def find_pairs(audio_segments,phones_segments,index):
                     return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
                 return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
 
+def load_per_word_auc(pickle_path):
+    with open(pickle_path, "rb") as f:
+        data = pickle.load(f)
+    return data
+
+def get_mean_sdt(data):
+    global_min = float('inf')
+    global_max = float('-inf')
+
+    for entry in data:
+        heatmap = entry["heatmap"]
+        time_steps, vocab_size = heatmap.shape
+    
+        if time_steps < 84:
+            pad_amount = 84 - time_steps
+            heatmap = F.pad(heatmap, pad=(0, 0, 0, pad_amount), mode='constant', value=0)
+        heatmap = heatmap.unsqueeze(0).unsqueeze(0)
+        heatmap = F.interpolate(heatmap,size = (224, 224)).squeeze(0).detach().cpu().numpy()
+        local_min = heatmap.min()
+        local_max = heatmap.max()
+        if local_min < global_min:
+            global_min = local_min
+        if local_max > global_max:
+            global_max = local_max
+
+    denominator = (global_max - global_min) + 1e-8  # small epsilon to avoid div by zero
+    print(denominator, global_min)
+    sum_pixels = 0.0
+    sum_sq_pixels = 0.0
+    total_count = 0
+
+    for entry in data:
+        heatmap = entry["heatmap"]
+        time_steps, vocab_size = heatmap.shape
+    
+        if time_steps < 84:
+            pad_amount = 84 - time_steps
+            heatmap = F.pad(heatmap, pad=(0, 0, 0, pad_amount), mode='constant', value=0)
+        heatmap = heatmap.unsqueeze(0).unsqueeze(0)
+        heatmap = F.interpolate(heatmap,size = (224, 224)).squeeze(0).detach().cpu().numpy()
+        # Scale the entire heatmap to [0,1] based on global min & max
+        scaled = (heatmap - global_min) / denominator  # shape (1, 224, 224)
+
+        # Sum all pixels
+        sum_pixels += scaled.sum()
+        # Sum of squares (for variance calculation)
+        sum_sq_pixels += np.square(scaled).sum()
+
+        # Count total number of pixels
+        total_count += scaled.size  # e.g. 1*224*224
+
+    # Overall mean
+    mean = sum_pixels / total_count
+    # Overall variance => E[X^2] - (E[X])^2
+    mean_sq = sum_sq_pixels / total_count
+    var = mean_sq - (mean**2)
+    std = np.sqrt(var)
+    print(mean,std)
+    return mean, std
+
 
 if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
-    # words_segments = loader.create_dataclass_words()
-    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
-    phones_segments = loader.load_segments_from_pickle("data_lists/phones__24kHz.pkl")
+    # # words_segments = loader.create_dataclass_words()
+    # # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
+    phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
 
-    print(len(words_segments))
-    mfcc_dim={
-        "n_mfcc":112, 
-        "n_mels":128, 
-        "frame_size":0.025, 
-        "hop_size":0.005, 
-        "n_fft":2048,
-        "target_length": 224
-    }
-
-
+    # print(len(words_segments))
+    # mfcc_dim={
+    #     "n_mfcc":112, 
+    #     "n_mels":128, 
+    #     "frame_size":0.025, 
+    #     "hop_size":0.005, 
+    #     "n_fft":2048,
+    #     "target_length": 224
+    # }
 
 
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+
+    per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
+    segments_train, segments_val, segments_test= split_list_after_speaker(per_word_auc_data)
+    get_mean_sdt(segments_train)
     # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
     # train_samples = []
     # for f in segments_train:
