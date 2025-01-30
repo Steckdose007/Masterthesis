@@ -111,25 +111,26 @@ if __name__ == "__main__":
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True)
     
-    # words_segments = loader.create_dataclass_words()
-    # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
-    words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
-    phones_segments = loader.load_segments_from_pickle("data_lists/phones__24kHz.pkl")
+    # # words_segments = loader.create_dataclass_words()
+    # # loader.save_segments_to_pickle(words_segments, "words_segments.pkl")
+    # words_segments = loader.load_segments_from_pickle("words_without_normalization_for_labeling.pkl")
+    phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
 
-    print(len(words_segments))
-    mfcc_dim={
-        "n_mfcc":112, 
-        "n_mels":128, 
-        "frame_size":0.025, 
-        "hop_size":0.005, 
-        "n_fft":2048,
-        "target_length": 224
-    }
-
-
+    # print(len(words_segments))
+    # mfcc_dim={
+    #     "n_mfcc":112, 
+    #     "n_mels":128, 
+    #     "frame_size":0.025, 
+    #     "hop_size":0.005, 
+    #     "n_fft":2048,
+    #     "target_length": 224
+    # }
 
 
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
+
+    per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
+    segments_train, segments_val, segments_test= split_list_after_speaker(per_word_auc_data)
+    get_mean_sdt(segments_train)
     # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
     # train_samples = []
     # for f in segments_train:
