@@ -46,7 +46,14 @@ class FixedListDataset(Dataset):
                             #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
                             #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
                             #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
-                            transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556])  
+                            #stt+mel
+                            #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556])  
+                            #mel
+                            #transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556])  
+                            #mfcc
+                            #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211])  
+                            #stt
+                            transforms.Normalize(mean=[0.27651408 ], std=[0.13017927])  
                             ])
         self.scaler = MinMaxScaler(feature_range=(0, 1))
 
@@ -58,28 +65,28 @@ class FixedListDataset(Dataset):
 
         
         # ===== Process STT Feature =====
-        stt_feature = object.stt.detach().cpu().numpy()[0]  # Assuming STT feature is available
+        stt_feature = object.stt.detach().cpu().numpy()[0]  
         stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
         stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
 
-        # ===== Process MFCC (Mel) Feature =====
-        mel_feature = object.mel  # Assuming `mel` is your MFCC feature
-        mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
-        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+        # # ===== Process MFCC (Mel) Feature =====
+        # mel_feature = object.mel  
+        # mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        # mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
 
-        # ===== Stack Features =====
-        stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
-        mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
-        stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
-
+        """ When stacked for mel + stt"""
+        # # ===== Stack Features =====
+        # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
+        #print(stacked_features.shape)
         label = 0
         label_str = object.label_path
         if label_str == "sigmatism":
              label = 1
-        #print("processed",processed_object.shape)
-        featur_tensor = torch.tensor(stacked_features, dtype=torch.float32).unsqueeze(0)
+
+        featur_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)
         feature_normalized = self.transforms(featur_tensor) 
-        #print(transformed_mfcc.shape)
         return  feature_normalized,label
 
 

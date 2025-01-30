@@ -31,7 +31,7 @@ def objective(trial):
     gamma = trial.suggest_float("gamma", 0.5, 0.99)
     step_size = trial.suggest_int("step_size", 5, 50)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
-    batch_size = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
+    batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
     dropout_rate = trial.suggest_float("dropout",0.1,0.6)
     
@@ -52,15 +52,18 @@ def objective(trial):
     segments_train, segments_val = prepare_dataset()
     segments_train = FixedListDataset(segments_train)
     segments_val = FixedListDataset(segments_val)
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8,pin_memory=True,prefetch_factor=2)  # Fetches 2x the batch size in advance)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8,pin_memory=True,prefetch_factor=2) 
 
     # ===== Initialize model =====
     # Example: a simple MobileNet or any other model
     num_classes = 2
-    input_channels = 2
-    model = initialize_mobilenetV3(num_classes,dropout_rate, input_channels).to(device)
-    
+    input_channels = 1
+    model = initialize_mobilenetV3(num_classes,dropout_rate, input_channels)
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs!")
+        model = nn.DataParallel(model)
+    model.to(device)  # Move model to GPU(s)
     # ===== Define loss and optimizer =====
     criterion = nn.CrossEntropyLoss()
     
@@ -75,7 +78,7 @@ def objective(trial):
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
-    num_epochs = 50  
+    num_epochs = 40  
     for epoch in tqdm(range(num_epochs), desc="Processing words"):
         # --- Train ---
         model.train()
@@ -133,7 +136,7 @@ def optimize_with_progress(study, objective, n_trials):
 
 if __name__ == "__main__":
     # Create Optuna study
-    study = optuna.create_study(direction='minimize', pruner=PatientPruner(MedianPruner(n_startup_trials=5), patience=4))
+    study = optuna.create_study(sampler=optuna.samplers.TPESampler(),direction='minimize', pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=8))
     # Optimize 
     optimize_with_progress(study, objective, n_trials=50)    
     print("Best trial:")
@@ -144,16 +147,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("best_hyperparameters_STTandMEL.txt", "w") as f:
+    with open("best_hyperparameters_stt.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("param_importances_STTandMEL.png")
+    fig.write_image("param_importances_stt.png")
     fig1 = plot_parallel_coordinate(study,target_name="validation loss", include_pruned=True)
-    fig1.write_image("plot_parallel_coordinate_STTandMEL.png")
+    fig1.write_image("plot_parallel_coordinate_stt.png")
 
     trials_data = []
     for t in study.trials:
@@ -169,4 +172,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("all_trials_results_STTandMEL.csv", index=False)
+    df.to_csv("all_trials_results_stt.csv", index=False)

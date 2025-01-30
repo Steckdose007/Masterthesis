@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="100mm"
+   viewBox="0 0 210 100"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   sodipodi:docname="Speakeroverview.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="true"
+     inkscape:zoom="2.9405047"
+     inkscape:cx="349.08973"
+     inkscape:cy="137.9015"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:grid
+       id="grid1"
+       units="mm"
+       originx="0"
+       originy="0"
+       spacingx="0.99999998"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="true" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1">
+    <rect
+       x="264.56693"
+       y="75.590546"
+       width="188.97638"
+       height="56.692913"
+       id="rect3" />
+    <rect
+       x="94.48819"
+       y="151.18111"
+       width="132.28346"
+       height="75.590546"
+       id="rect2" />
+    <rect
+       x="151.18111"
+       y="94.48819"
+       width="170.07874"
+       height="56.692913"
+       id="rect1" />
+  </defs>
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <text
+       xml:space="preserve"
+       transform="scale(0.26458333)"
+       id="text1"
+       style="font-size:10.6667px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect1);fill:#ff0000;stroke:#000000;stroke-width:2.353;stroke-dasharray:none;stroke-opacity:1" />
+    <text
+       xml:space="preserve"
+       transform="scale(0.26458333)"
+       id="text2"
+       style="font-size:10.6667px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect2);fill:#ff0000;stroke:#000000;stroke-width:2.353;stroke-dasharray:none;stroke-opacity:1" />
+    <text
+       xml:space="preserve"
+       transform="matrix(0.26458333,0,0,0.26458333,1.1731502e-4,-12.77686)"
+       id="text3"
+       style="font-size:24px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect3);fill:#000000;fill-opacity:1;stroke:none;stroke-width:2.353;stroke-dasharray:none;stroke-opacity:1"><tspan
+         x="290.28906"
+         y="86.085771"
+         id="tspan1">61 Speaker</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       x="70"
+       y="24"
+       id="text4"><tspan
+         sodipodi:role="line"
+         id="tspan4"
+         style="stroke-width:0.622565"
+         x="70"
+         y="24">61 Sigmatism</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="70"
+         y="25.905001"
+         id="tspan5" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="70"
+         y="27.809999"
+         id="tspan6" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="70"
+         y="29.715"
+         id="tspan7" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="70"
+         y="31.620001"
+         id="tspan8">Recordings</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       x="120"
+       y="24"
+       id="text4-2"><tspan
+         sodipodi:role="line"
+         id="tspan4-7"
+         style="stroke-width:0.622565"
+         x="120"
+         y="24">61 Normal</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="120"
+         y="25.905001"
+         id="tspan5-9" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="120"
+         y="27.809999"
+         id="tspan6-5" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="120"
+         y="29.715"
+         id="tspan7-4" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="120"
+         y="31.620001"
+         id="tspan8-3">Recordings</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       x="63.823307"
+       y="44.824512"
+       id="text9"><tspan
+         sodipodi:role="line"
+         id="tspan9"
+         style="stroke-width:0.622565"
+         x="63.823307"
+         y="44.824512">Assessment by </tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="63.823307"
+         y="46.729511"
+         id="tspan10" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="63.823307"
+         y="48.63451"
+         id="tspan11" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="63.823307"
+         y="50.539509"
+         id="tspan12" /><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.622565"
+         x="63.823307"
+         y="52.444515"
+         id="tspan13">speech therapist</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       x="100.06712"
+       y="69.855515"
+       id="text14"><tspan
+         sodipodi:role="line"
+         id="tspan14"
+         style="stroke-width:0.622565"
+         x="100.06712"
+         y="69.855515">57 qualified</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:0.3;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       x="39.48008"
+       y="69.824509"
+       id="text15"><tspan
+         sodipodi:role="line"
+         id="tspan15"
+         style="stroke-width:0.622565"
+         x="39.48008"
+         y="69.824509">4 removed</tspan></text>
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       d="m 95.000002,12 c 0,3 0,3 0,3 h -25 v 3 0"
+       id="path15" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       d="M 95.000002,15 H 120 v 3"
+       id="path16" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       d="m 70.000002,33 v 6.999999"
+       id="path17" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       d="m 70.000002,55 v 5.000001 H 100 V 63"
+       id="path19" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.622565;stroke-dasharray:none;stroke-opacity:1"
+       d="m 70.000002,60.000001 h -30 V 63"
+       id="path20" />
+  </g>
+</svg>
