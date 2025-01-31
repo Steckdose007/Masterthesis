@@ -31,7 +31,7 @@ def objective(trial):
     gamma = trial.suggest_float("gamma", 0.5, 0.99)
     step_size = trial.suggest_int("step_size", 5, 50)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
-    batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+    batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
     dropout_rate = trial.suggest_float("dropout",0.1,0.6)
     
@@ -52,8 +52,8 @@ def objective(trial):
     segments_train, segments_val = prepare_dataset()
     segments_train = FixedListDataset(segments_train)
     segments_val = FixedListDataset(segments_val)
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=8,pin_memory=True,prefetch_factor=2)  # Fetches 2x the batch size in advance)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=8,pin_memory=True,prefetch_factor=2) 
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=16, pin_memory=True, prefetch_factor=4, persistent_workers=True)  # Fetches 2x the batch size in advance)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=16, pin_memory=True, prefetch_factor=4, persistent_workers=True) 
 
     # ===== Initialize model =====
     # Example: a simple MobileNet or any other model
@@ -78,7 +78,7 @@ def objective(trial):
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
-    num_epochs = 40  
+    num_epochs = 40 
     for epoch in tqdm(range(num_epochs), desc="Processing words"):
         # --- Train ---
         model.train()
@@ -136,9 +136,9 @@ def optimize_with_progress(study, objective, n_trials):
 
 if __name__ == "__main__":
     # Create Optuna study
-    study = optuna.create_study(sampler=optuna.samplers.TPESampler(),direction='minimize', pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=8))
+    study = optuna.create_study(sampler=optuna.samplers.TPESampler(),direction='minimize', pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=10))
     # Optimize 
-    optimize_with_progress(study, objective, n_trials=50)    
+    optimize_with_progress(study, objective, n_trials=60)    
     print("Best trial:")
     trial = study.best_trial
     print(f"  Accuracy: {trial.value}")
@@ -147,16 +147,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("best_hyperparameters_stt.txt", "w") as f:
+    with open("best_hyperparameters_mel.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("param_importances_stt.png")
-    fig1 = plot_parallel_coordinate(study,target_name="validation loss", include_pruned=True)
-    fig1.write_image("plot_parallel_coordinate_stt.png")
+    fig.write_image("param_importances_mel.png")
+    fig1 = plot_parallel_coordinate(study,target_name="validation loss")
+    fig1.write_image("plot_parallel_coordinate_mel.png")
 
     trials_data = []
     for t in study.trials:
@@ -172,4 +172,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("all_trials_results_stt.csv", index=False)
+    df.to_csv("all_trials_results_mel.csv", index=False)
