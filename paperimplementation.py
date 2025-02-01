@@ -152,7 +152,7 @@ def pad_mfccs(mfccs_train,mfccs_test):
     - padded_mfccs: List of padded MFCC sequences with shape (max_length, n_features).
     """
     max_length = max(max([mfcc.shape[0] for mfcc in mfccs_train]),max([mfcc.shape[0] for mfcc in mfccs_test])) #maximum of all mfccs
-
+    print("maxlen: ",max_length)
     padded_mfccs_train = []
     for mfcc in mfccs_train:
         n_frames, n_features = mfcc.shape

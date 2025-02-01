@@ -1,10 +1,10 @@
 #!/bin/bash -l
 #
-#SBATCH --time=36:00:00
+#SBATCH --time=48:00:00
 #SBATCH --partition=a100
 #SBATCH --gres=gpu:a100:2
 #SBATCH --cpus-per-task=4
-#SBATCH --job-name=job123
+#SBATCH --job-name=stt
 #SBATCH -o /home/hpc/iwb3/iwb3111h/output/slurm-%j.out
 #SBATCH -e /home/hpc/iwb3/iwb3111h/output/slurm-%j.err
 #SBATCH --export=NONE

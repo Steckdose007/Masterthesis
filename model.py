@@ -162,7 +162,7 @@ def initialize_mobilenet(num_classes,dropout, input_channels=1):
 
     return model
 
-def initialize_mobilenetV3(num_classes,dropout, input_channels=2 ):
+def initialize_mobilenetV3(num_classes,dropout, input_channels=1 ):
 
     #model = mobilenet_v2(weights=True)  # Load pretrained MobileNetV2
     model = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT,dropout = dropout)
