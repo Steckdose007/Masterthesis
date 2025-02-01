@@ -58,20 +58,20 @@ class FixedListDataset(Dataset):
 
         
         # ===== Process STT Feature =====
-        stt_feature = object.stt.detach().cpu().numpy()[0]  # Assuming STT feature is available
+        stt_feature = object.stt.detach().cpu().numpy()[0]  
         stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
-        stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
+        stt_scaled = self.scaler.fit_transform(stt_resized)  
 
         # ===== Process MFCC (Mel) Feature =====
-        mel_feature = object.mel  # Assuming `mel` is your MFCC feature
+        mel_feature = object.mel  
         mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
-        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+        mel_scaled = self.scaler.fit_transform(mel_resized)  
 
         # ===== Stack Features =====
         stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
         mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
         stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
-
+        print(stacked_features.shape)
         label = 0
         label_str = object.label_path
         if label_str == "sigmatism":

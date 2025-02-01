@@ -128,9 +128,9 @@ if __name__ == "__main__":
 
 
 
-    per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
-    segments_train, segments_val, segments_test= split_list_after_speaker(per_word_auc_data)
-    get_mean_sdt(segments_train)
+    #per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
+    #segments_train, segments_val, segments_test= split_list_after_speaker(per_word_auc_data)
+    #get_mean_sdt(segments_train)
     # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
     # train_samples = []
     # for f in segments_train:
@@ -140,34 +140,34 @@ if __name__ == "__main__":
     # train_mean = np.mean(train_samples)
     # train_std = np.std(train_samples)
     # print("train_mean:", train_mean, " train_std:", train_std)
-    for i in range(10):
-        sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(segments_test,phones_segments,i*30)
-        #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
-        plotting.plot_mel_spectrogram(sigmatism)
-        plotting.plot_mel_spectrogram(normal)
-    # Create dataset 
-    output_file = "STT_list_Interpolate_2D_train.pkl"  
-    process_and_save_dataset(segments_train, output_file)
-    output_file = "STT_list_Interpolate_2D_val.pkl"  
-    process_and_save_dataset(segments_val, output_file)
-    output_file = "STT_list_Interpolate_2D_test.pkl"  
-    process_and_save_dataset(segments_test, output_file)
+    # for i in range(10):
+    #     sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(segments_test,phones_segments,i*30)
+    #     #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
+    #     plotting.plot_mel_spectrogram(sigmatism)
+    #     plotting.plot_mel_spectrogram(normal)
+    # # Create dataset 
+    # output_file = "STT_list_Interpolate_2D_train.pkl"  
+    # process_and_save_dataset(segments_train, output_file)
+    # output_file = "STT_list_Interpolate_2D_val.pkl"  
+    # process_and_save_dataset(segments_val, output_file)
+    # output_file = "STT_list_Interpolate_2D_test.pkl"  
+    # process_and_save_dataset(segments_test, output_file)
 
 
-    segments_test = AudioSegmentDataset(words_segments, mfcc_dim, augment= False)
-    logits,label = segments_test[0]  
-    resized_array = logits.squeeze().detach().numpy()
+    # segments_test = AudioSegmentDataset(words_segments, mfcc_dim, augment= False)
+    # logits,label = segments_test[0]  
+    # resized_array = logits.squeeze().detach().numpy()
 
-    # Plot the resized logits as an image
-    plt.figure(figsize=(10, 6))
-    plt.imshow(resized_array, aspect='auto', origin='lower', cmap='viridis')
-    plt.colorbar(label='Logit Intensity')
-    plt.title("Resized Logits Visualization")
-    plt.xlabel("Feature Dimension (Vocab Size)")
-    plt.ylabel("Time Steps")
-    plt.tight_layout()
-    plt.savefig("LOGITS_INTERPOLATED.png")
+    # # Plot the resized logits as an image
+    # plt.figure(figsize=(10, 6))
+    # plt.imshow(resized_array, aspect='auto', origin='lower', cmap='viridis')
+    # plt.colorbar(label='Logit Intensity')
+    # plt.title("Resized Logits Visualization")
+    # plt.xlabel("Feature Dimension (Vocab Size)")
+    # plt.ylabel("Time Steps")
+    # plt.tight_layout()
+    # plt.savefig("LOGITS_INTERPOLATED.png")
 
-    plt.show()
+    # plt.show()
 
     
