@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet
+from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet, initialize_mobilenetV3, initialize_mobilenetV3small
 from audiodataloader import AudioDataLoader, AudioSegment, find_pairs, split_list_after_speaker
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
@@ -16,7 +16,7 @@ from collections import defaultdict
 import librosa
 from Dataloader_STT import AudioSegmentDataset
 from Dataloader_fixedlist import FixedListDataset
-
+from create_fixed_list import TrainSegment
 from torch.nn.functional import interpolate
 #from torchsummary import summary
 
@@ -64,7 +64,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
         train_losses.append(epoch_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Train Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}")
         # Step the scheduler
-        #scheduler.step()
+        #scheduler.step(val_loss)
         # Evaluate on the test set
         val_loss, val_acc = evaluate_model(model, test_loader, criterion)
         val_losses.append(val_loss)
@@ -75,7 +75,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
             best_test_acc = val_acc
             #best_model_filename = os.path.join('models', best_model_filename)
             torch.save(model.state_dict(), os.path.join('models', best_model_filename))
-            print(f"Best model saved with test accuracy {best_loss:.4f} as {best_model_filename}")
+            print(f"Best model saved with val accuracy {best_test_acc:.4f} as {best_model_filename}")
     
     # Plot train and test losses
     plot_losses(train_losses, val_losses,best_model_filename,best_test_acc)
@@ -128,12 +128,6 @@ if __name__ == "__main__":
     
     # loader = AudioDataLoader(config_file='config.json', word_data=False, phone_data=False, sentence_data=False, get_buffer=False)
 
-    # # Load preprocessed audio segments from a pickle file
-    # words_segments = loader.load_segments_from_pickle("words__16kHz.pkl")
-    # segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
-    # print(f"Number of word segments in train: {len(segments_train)},val: {len(segments_val)} test: {len(segments_test)}")
-    
-
     # Hyperparameters
     mfcc_dim={
         "n_mfcc":128, 
@@ -144,32 +138,31 @@ if __name__ == "__main__":
         "target_length": 224
     }
     Hyperparameters={
-        "gamma": 0.8765847276000667,
-        "step_size": 35,
-        "learning_rate": 0.0001,
-        "batch_size": 16,
-        "momentum": 0.11750923074076126,
+        "gamma": 0.6447705236833117,
+        "step_size": 48,
+        "learning_rate": 0.00001,#0.00043477461811835107,
+        "batch_size": 64,
+        "momentum": 0.291,
+        "weight_decay":1.5577322999874843e-03,
+        "dropout":0.3
     }
-    n_mfcc = 112 # Number of MFCC coefficients
     num_classes = 2  #  binary classification for sigmatism
     learning_rate = Hyperparameters["learning_rate"]
-    num_epochs = 25
+    num_epochs = 50
     batch_size = Hyperparameters["batch_size"]
     step_size = Hyperparameters["step_size"]
     gamma=Hyperparameters["gamma"]
     momentum=Hyperparameters["momentum"]
-
+    dropout = Hyperparameters["dropout"]
+    weight_decay = Hyperparameters["weight_decay"]
     #============================Load fixed lists =====================================
-    with open("STT_list_Interpolate_2D_train.pkl", "rb") as f:
-        train = pickle.load(f)
-    with open("STT_list_Interpolate_2D_val.pkl", "rb") as f:
-        val = pickle.load(f)
-    # Create dataset 
-    segments_train = FixedListDataset(train)
-    segments_val = FixedListDataset(val)
-
-    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True)#,num_workers=8)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False)#,num_workers=8)
+    with open("data_lists/mother_list.pkl", "rb") as f:
+        data = pickle.load(f)
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    segments_train = FixedListDataset(segments_train)
+    segments_val = FixedListDataset(segments_val)
+    train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=2, pin_memory=True, prefetch_factor=4, persistent_workers=True)  # Fetches 2x the batch size in advance)
+    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=2, pin_memory=True, prefetch_factor=4, persistent_workers=True) 
 
 
     # Initialize model, loss function, and optimizer
@@ -177,16 +170,21 @@ if __name__ == "__main__":
     print("Device: ",device)
     num_classes = 2  # Change as needed
     input_channels = 1  #input is grayscale spectrogram
-    #model = initialize_mobilenet(num_classes, input_channels).to(device)
-    model = modelSST(num_classes).to(device)  
+    model = initialize_mobilenetV3(num_classes,dropout, input_channels)
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs!")
+        model = nn.DataParallel(model)
+    model.to(device)  # Move model to GPU(s)
     criterion = nn.CrossEntropyLoss()  
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)# L2 Regularization (Weight Decay)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay = weight_decay)# L2 Regularization (Weight Decay)
     #optimizer = optim.SGD(model.parameters(),lr=learning_rate,momentum=momentum)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.7)
     #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100,eta_min=0.00001)
+    #scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"CNN224x224_STT_{timestamp}.pth"
+    best_model_filename = f"V3_MEL_fixedLRandtimefrequmasking{timestamp}.pth"
     
     train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)

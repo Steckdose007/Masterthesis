@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v2,MobileNet_V2_Weights
-from torchvision.models import mobilenet_v3_small, mobilenet_v3_large, MobileNet_V3_Large_Weights
+from torchvision.models import mobilenet_v3_small, mobilenet_v3_large, MobileNet_V3_Large_Weights,MobileNet_V3_Small_Weights
 
 
 class CNN1D(nn.Module):
@@ -162,9 +162,8 @@ def initialize_mobilenet(num_classes,dropout, input_channels=1):
 
     return model
 
-def initialize_mobilenetV3(num_classes,dropout, input_channels=1 ):
+def initialize_mobilenetV3(num_classes,dropout, input_channels ):
 
-    #model = mobilenet_v2(weights=True)  # Load pretrained MobileNetV2
     model = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT,dropout = dropout)
     # Modify the first convolutional layer to accept my 2D mfcc with only one channel. No rgb
     first_conv = model.features[0][0]  # Conv2d
@@ -178,9 +177,33 @@ def initialize_mobilenetV3(num_classes,dropout, input_channels=1 ):
     )
     model.features[0][0] = new_conv
     # Adjust the final classifier to match the number of classes
-    model.classifier[3] = nn.Linear(in_features=1280, out_features=num_classes)
+    model.classifier[3] = nn.Linear(
+        in_features=model.classifier[3].in_features,  # Automatically detect input size
+        out_features=num_classes
+    )     
     return model
 
+def initialize_mobilenetV3small(num_classes,dropout, input_channels ):
+
+    model = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.DEFAULT,dropout = dropout)  # Load pretrained MobileNetV2
+    #model = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT,dropout = dropout)
+    # Modify the first convolutional layer to accept my 2D mfcc with only one channel. No rgb
+    first_conv = model.features[0][0]  # Conv2d
+    new_conv = nn.Conv2d(
+        in_channels=input_channels,
+        out_channels=first_conv.out_channels,
+        kernel_size=first_conv.kernel_size,
+        stride=first_conv.stride,
+        padding=first_conv.padding,
+        bias=False
+    )
+    model.features[0][0] = new_conv
+    # Adjust the final classifier to match the number of classes
+    model.classifier[3] = nn.Linear(
+        in_features=model.classifier[3].in_features,  # Automatically detect input size
+        out_features=num_classes
+    )    
+    return model
 # num_classes = 2
 # input_channels = 1
 # model = initialize_mobilenetV3(num_classes,0.5 ,input_channels)

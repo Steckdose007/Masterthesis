@@ -17,6 +17,7 @@ from tqdm import tqdm
 import os
 from data_augmentation import apply_augmentation
 import torchvision.transforms as transforms
+import torchaudio.transforms as T
 import torch.nn.functional as F
 from create_fixed_list import TrainSegment
 from sklearn.preprocessing import MinMaxScaler
@@ -31,6 +32,19 @@ class AudioSegment:
     label: str  
     label_path: str
     path: str
+
+@dataclass
+class TrainSegment:
+    start_time: float
+    end_time: float
+    mfcc: np.ndarray
+    mel: np.ndarray
+    stt: np.ndarray
+    sample_rate: int
+    label_word: str  #word for example "sonne"
+    label_path: str # sigmatism or normal
+    path: str # which file it is from
+    augmented: str #if that was augmented with pitch/noise
 
 class FixedListDataset(Dataset):
     def __init__(self, audio_segments: List[AudioSegment]):
@@ -50,7 +64,9 @@ class FixedListDataset(Dataset):
                             #stt+mel
                             #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556])  
                             #mel
-                            transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556])  
+                            transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556]),  
+                            T.TimeMasking(time_mask_param=40),  # Mask up to 30 time steps
+                            T.FrequencyMasking(freq_mask_param=40)  # Mask up to 15 frequency bins
                             #mfcc
                             #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211])  
                             #stt
@@ -69,21 +85,18 @@ class FixedListDataset(Dataset):
         stt_feature = object.mel#stt.detach().cpu().numpy()[0]  
         stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
         stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
-        att_map = self.generate_attention_map(
-                word=object.label_word,
-                mel_shape=stt_scaled.shape,
-                focus_phonemes=('s', 'z', 'x'),
-                sigma_time=30.0,
-                amplitude=1.0
-            )
-        print(object.label_word)
-        plot_mel_and_attention(stt_resized, att_map)
+        
+        #att_map = self.generate_attention_map(word=object.label_word,mel_shape=stt_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
+        #att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
+        #print(object.label_word)
+        #plot_mel_and_attention(stt_resized, att_map)
+
         # # ===== Process MFCC (Mel) Feature =====
         # mel_feature = object.mel  
         # mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
         # mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
 
-        """ When stacked for mel + stt"""
+        # """ When stacked for mel + stt"""
         # # ===== Stack Features =====
         # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
         # mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
@@ -96,6 +109,7 @@ class FixedListDataset(Dataset):
 
         featur_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)
         feature_normalized = self.transforms(featur_tensor) 
+        #final_features = torch.cat([feature_normalized, att_tensor], dim=0)
         return  feature_normalized,label
 
 
@@ -186,6 +200,15 @@ def plot_mel_and_attention(mel_spectrogram, attention_map):
 
 if __name__ == "__main__":
 
+    print("PyTorch version:", torch.__version__)
+    print("CUDA available:", torch.cuda.is_available())
+    print("CUDA device count:", torch.cuda.device_count())
+
+    if torch.cuda.is_available():
+        print("CUDA device name:", torch.cuda.get_device_name(0))
+        print("CUDA version:", torch.version.cuda)
+
+
     with open("data_lists/mother_list.pkl", "rb") as f:
         data = pickle.load(f)
     # Create dataset 
@@ -194,12 +217,12 @@ if __name__ == "__main__":
     print(type(logits),logits.shape) 
     resized_array = logits.squeeze().detach().numpy()
 
-    # Plot the resized logits as an image
-    # plt.figure(figsize=(10, 6))
-    # plt.imshow(resized_array, aspect='auto', origin='lower', cmap='plasma')
-    # plt.colorbar(label='Intensity')
-    # plt.tight_layout()
-    # plt.show()
+    #Plot the resized logits as an image
+    plt.figure(figsize=(10, 6))
+    plt.imshow(resized_array, aspect='auto', origin='lower', cmap='plasma')
+    plt.colorbar(label='Intensity')
+    plt.tight_layout()
+    plt.show()
     
     
     

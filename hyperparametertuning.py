@@ -28,12 +28,12 @@ def prepare_dataset():
 # Define objective function for Optuna
 def objective(trial):
     # ===== Hyperparameters to tune =====
-    gamma = trial.suggest_float("gamma", 0.5, 0.99)
-    step_size = trial.suggest_int("step_size", 5, 50)
+    #gamma = trial.suggest_float("gamma", 0.5, 0.99)
+    #step_size = trial.suggest_int("step_size", 5, 50)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
-    batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
+    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256])
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
-    dropout_rate = trial.suggest_float("dropout",0.1,0.6)
+    dropout_rate = trial.suggest_categorical("dropout",[0.1,0.2,0.3,0.4,0.5,0.6])
     
     # (Optional) If using SGD, tune momentum as well
     if optimizer_name == "SGD":
@@ -58,7 +58,7 @@ def objective(trial):
     # ===== Initialize model =====
     # Example: a simple MobileNet or any other model
     num_classes = 2
-    input_channels = 1
+    input_channels = 2
     model = initialize_mobilenetV3(num_classes,dropout_rate, input_channels)
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
@@ -75,10 +75,10 @@ def objective(trial):
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
-    num_epochs = 40 
+    num_epochs = 50
     for epoch in tqdm(range(num_epochs), desc="Processing words"):
         # --- Train ---
         model.train()
@@ -92,7 +92,7 @@ def objective(trial):
             optimizer.step()
         
         # Step the scheduler at the end of each epoch
-        scheduler.step()
+        # scheduler.step()
 
         # --- Validation ---
         model.eval()
@@ -117,14 +117,14 @@ def objective(trial):
         val_accuracy = val_correct / val_total
 
         # Report validation loss to Optuna
-        trial.report(val_loss, step=epoch)
+        trial.report(val_accuracy, step=epoch)
 
         # Optional: If you want to prune based on validation loss
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
 
     # Return final validation loss (or negative accuracy if you want to maximize accuracy)
-    return val_loss
+    return val_accuracy
 
 def optimize_with_progress(study, objective, n_trials):
     with tqdm(total=n_trials) as pbar:
@@ -136,9 +136,9 @@ def optimize_with_progress(study, objective, n_trials):
 
 if __name__ == "__main__":
     # Create Optuna study
-    study = optuna.create_study(sampler=optuna.samplers.TPESampler(),direction='minimize', pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=10))
+    study = optuna.create_study(sampler=optuna.samplers.TPESampler(),direction='maximize', pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=10))
     # Optimize 
-    optimize_with_progress(study, objective, n_trials=60)    
+    optimize_with_progress(study, objective, n_trials=50)    
     print("Best trial:")
     trial = study.best_trial
     print(f"  Accuracy: {trial.value}")
@@ -147,16 +147,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("best_hyperparameters_mel.txt", "w") as f:
+    with open("hyperparam_output/best_hyperparameters_melatt.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("param_importances_mel.png")
+    fig.write_image("hyperparam_output/param_importances_melatt.png")
     fig1 = plot_parallel_coordinate(study,target_name="validation loss")
-    fig1.write_image("plot_parallel_coordinate_mel.png")
+    fig1.write_image("hyperparam_output/plot_parallel_coordinate_melatt.png")
 
     trials_data = []
     for t in study.trials:
@@ -172,4 +172,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("all_trials_results_mel.csv", index=False)
+    df.to_csv("hyperparam_output/all_trials_results_melatt.csv", index=False)
