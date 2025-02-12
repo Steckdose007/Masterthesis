@@ -14,7 +14,13 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from audiodataloader import AudioDataLoader, AudioSegment
 import random
+import cv2
+import torchvision.transforms as transforms
+import torchaudio.transforms as T
 from data_augmentation import apply_augmentation
+from sklearn.preprocessing import MinMaxScaler
+from math import exp, sqrt, pi
+
 @dataclass
 class AudioSegment:
     start_time: float
@@ -25,8 +31,21 @@ class AudioSegment:
     label_path: str
     path: str
 
+@dataclass
+class TrainSegment:
+    start_time: float
+    end_time: float
+    mfcc: np.ndarray
+    mel: np.ndarray
+    stt: np.ndarray
+    sample_rate: int
+    label_word: str  #word for example "sonne"
+    label_path: str # sigmatism or normal
+    path: str # which file it is from
+    augmented: str #if that was augmented with pitch/noise
+
 class GradcamDataset(Dataset):
-    def __init__(self, audio_segments: List[AudioSegment], mfcc_dict : dict, augment: bool):
+    def __init__(self, audio_segments: List[AudioSegment]):
         """
         Custom dataset for audio segments, prepares them for use in the CNN model.
         
@@ -34,126 +53,62 @@ class GradcamDataset(Dataset):
         - audio_segments: A list of AudioSegment objects.
         - target_length: The fixed length for padding/truncation.
         """
-        self.augment = augment
         self.audio_segments = audio_segments
-        self.target_length = mfcc_dict["target_length"]
-        self.mfcc_dict = mfcc_dict
+        self.transforms  = transforms.Compose([
+                            #transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
+                            #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
+                            #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
+                            #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
+                            #stt+mel
+                            #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556]),  
+                            #mel
+                            transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556]),  
+                            #mfcc
+                            #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211]),
+                            #stt
+                            #transforms.Normalize(mean=[0.27651408 ], std=[0.13017927])  ,
+                            #T.TimeMasking(time_mask_param=30),  # Mask up to 30 time steps
+                            #T.FrequencyMasking(freq_mask_param=30)  # Mask up to 15 frequency bins
+                            ])
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
 
     def __len__(self):
         return len(self.audio_segments)
 
     def __getitem__(self, idx):
-        segment = self.audio_segments[idx]
-        audio_data = segment.audio_data
+        object = self.audio_segments[idx]
+
+        
+        # ===== Process STT Feature =====
+        # stt_feature = object.stt.detach().cpu().numpy()[0]  
+        # stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        # stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
+        
+
+        # ===== Process MFCC (Mel) Feature =====
+        mel_feature = object.mel  
+        mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+
+        att_map = generate_attention_map(word=object.label_word,mel_shape=mel_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
+        att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
+        # print(object.label_word)
+        # plot_mel_and_attention(stt_resized, att_map)
+        """ When stacked for mel + stt"""
+        # ===== Stack Features =====
+        # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
+        #print(stacked_features.shape)
         label = 0
-        if(segment.label_path == "sigmatism"):
-            label = 1
-        if self.augment and random.random() < 0.8 and audio_data.size >= 2048:  # 80% chance of augmentation
-            audio_data = apply_augmentation(audio_data, segment.sample_rate)
-        mfcc = self.compute_mfcc_features(audio_data,segment.sample_rate,n_mfcc=self.mfcc_dict["n_mfcc"], n_mels=self.mfcc_dict["n_mels"],
-                        frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
-        #self.plot_histograms(mfcc)
-        normalized_mfcc = self.normalize_mfcc(mfcc)
-        #self.plot_histograms(normalized_mfcc)
-        mel_specto = self.compute_melspectogram_features(audio_data,segment.sample_rate, n_mels=self.mfcc_dict["n_mels"],
-                        frame_size=self.mfcc_dict["frame_size"], hop_size=self.mfcc_dict["hop_size"], n_fft=self.mfcc_dict["n_fft"])
-        
-        padding_mel,mel_audio = self.pad_mfcc(mel_specto, self.target_length)
-        padding, padded_audio = self.pad_mfcc(normalized_mfcc, self.target_length)
-        
-        # Convert to PyTorch tensor and add channel dimension for CNN
-        # In raw mono audio, the input is essentially a 1D array of values (e.g., the waveform). 
-        # However, CNNs expect the input to have a channel dimension, 
-        # which is why we add this extra dimension.
-        audio_tensor = torch.tensor(padded_audio, dtype=torch.float32).unsqueeze(0) 
-        mel_tensor = torch.tensor(mel_audio, dtype=torch.float32).unsqueeze(0)
-        print(segment.label)#e.g Sonne
-        #print("MFCC size: ",padded_audio.shape)
-        
-        return audio_tensor, label,segment.label, segment.audio_data, padding, mel_tensor,padding_mel
+        label_str = object.label_path
+        if label_str == "sigmatism":
+             label = 1
 
-    def compute_mfcc_features(self,signal, sample_rate, n_mfcc=128, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
-        try:
-            # Convert frame and hop size from seconds to samples
-            frame_length = int(frame_size * sample_rate)
-            hop_length = int(hop_size * sample_rate)
-            
-            # Compute the static MFCCs using librosa's mfcc function
-            mfccs = librosa.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc, 
-                                        n_fft=n_fft, hop_length=hop_length, win_length=frame_length, n_mels=n_mels)
-            
-            # Compute the first-order difference (Delta MFCCs) using a 5-frame window
-            mfcc_delta = librosa.feature.delta(mfccs, width=5)
-            
-            # Compute the second-order difference (Delta-Delta MFCCs)
-            #mfcc_delta2 = librosa.feature.delta(mfccs, order=2, width=3)
-            
-            # Concatenate static, delta, and delta-delta features to form a 24-dimensional feature vector per frame
-            mfcc_features = np.concatenate([mfccs, mfcc_delta], axis=0)
-            
-            return mfcc_features
-        except:
-            print("ERROR: ",np.shape(signal), signal.size)
-
-    def compute_melspectogram_features(self,signal, sample_rate=24000, n_mels=128, frame_size=25.6e-3, hop_size=5e-3, n_fft=2048):
-        # Convert frame and hop size from seconds to samples
-        frame_length = int(frame_size * sample_rate)
-        hop_length = int(hop_size * sample_rate)   
-        mel_spectrogram = librosa.feature.melspectrogram(y=signal, sr=sample_rate, n_mels=n_mels,n_fft=n_fft,hop_length=hop_length,win_length=frame_length)
-        mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
-
-        mel_spectrogram_db_normalized = (mel_spectrogram_db + 80) / 80
-        normalized_spectrogram = (mel_spectrogram_db_normalized - 0.485) / 0.229
-        return normalized_spectrogram
-    
-    def normalize_mfcc(self,mfcc):
-        """
-        https://pytorch.org/hub/pytorch_vision_mobilenet_v2/
-        The images have to be loaded in to a range of [0, 1] 
-        and then normalized using mean = [0.485, 0.456, 0.406] and std = [0.229, 0.224, 0.225].
-        """
-        # Step 1: Scale to [0, 1] using min-max normalization
-        mfcc_min = mfcc.min()
-        mfcc_max = mfcc.max()
-        mfcc_scaled = (mfcc - mfcc_min) / (mfcc_max - mfcc_min)
-
-        # Step 2: Normalize using mean and std for the first channel
-        mean = [0.485]  # Only the first channel is relevant for MFCC input
-        std = [0.229]
-        
-        mfcc_normalized = (mfcc_scaled - mean[0]) / std[0]
-
-        return mfcc_normalized
-    
-    #target frames was found out impirical.
-    def pad_mfcc(self, mfcc, target_time_frames = 224,target_n_mfcc=224):        
-        """
-        Pad the audio signal to a fixed target length.
-        If the audio is shorter, pad with zeros. If longer, truncate.
-        
-        Parameters:
-        - audio_data: Numpy array of the audio signal.
-        - target_length: Desired length in samples.
-        
-        Returns:
-        - Padded or truncated audio data.
-        """
-        n_mfcc, time_frames = mfcc.shape
-
-        # Compute padding or truncation for both axes
-        paddingY = max(0, target_n_mfcc - n_mfcc)
-        paddingX = max(0, target_time_frames - time_frames)
-
-        # Pad if smaller
-        if paddingY > 0 or paddingX > 0:
-            mfcc = np.pad(
-                mfcc,
-                ((0, paddingY), (0, paddingX)),  # Pad both axes
-                mode='constant'
-            )
-
-        # Truncate if larger
-        return (paddingY,paddingX),mfcc[:target_n_mfcc, :target_time_frames]
+        featur_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)
+        feature_normalized = self.transforms(featur_tensor) 
+        final_features = torch.cat([feature_normalized, att_tensor], dim=0)
+        return  final_features, label, object.label_word
         
     def plot_histograms(self,mfcc):
         """
@@ -174,6 +129,57 @@ class GradcamDataset(Dataset):
         plt.xlabel("MFCC Value")
         plt.grid(axis='x', linestyle='--', alpha=0.7)
         plt.show()
+
+def gaussian_1d( x, mu, sigma):
+        """Compute 1D Gaussian value at x with mean mu and std sigma."""
+        return (1.0 / (sigma * sqrt(2.0 * pi))) * exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+def generate_attention_map(word: str,mel_shape: tuple,focus_phonemes=('s', 'z', 'x'),sigma_time=5.0,amplitude=1.0,extra_coverage=15):
+        """
+        Generate a 2D attention map (freq_bins x time_steps) for a given word.
+        Places Gaussian bumps in the time dimension for each focus phoneme.
+
+        If the focus phoneme is at the beginning or end of the word, this function
+        adds extra coverage in the time dimension to reflect extended emphasis.
+
+        Args:
+            word (str): The input word (e.g., 'Sonne').
+            mel_shape (tuple): (freq_bins, time_steps) of the mel spectrogram.
+            focus_phonemes (tuple): Characters to focus on (e.g. ('s', 'z', 'x')).
+            sigma_time (float): Standard deviation for the time-axis Gaussian.
+            amplitude (float): Peak amplitude for each Gaussian.
+            extra_coverage (int): Additional time steps added before the first focus 
+                                phoneme or after the last one.
+
+        Returns:
+            np.ndarray: A 2D array (freq_bins, time_steps) representing the attention map.
+        """
+        freq_bins, time_steps = mel_shape
+        attention_map = np.zeros((freq_bins, time_steps), dtype=np.float32)
+
+        # For each character in the word, if it's a focus phoneme, create a Gaussian
+        L = len(word)
+
+        for i, ch in enumerate(word.lower()):
+            if ch in focus_phonemes:
+                # Determine the center time step for this character
+                center_time = (i + 0.5) * time_steps / L
+                # Shift if it's the first character (move left)
+                if i == 0:
+                    center_time += extra_coverage
+
+                # Shift if it's the last character (move right)
+                elif i == L - 1:
+                    center_time -= extra_coverage
+                # Create a 1D Gaussian across this extended range, but clamp indices
+                for t in range(time_steps):
+                    g = gaussian_1d(t, center_time, sigma_time)
+                    attention_map[:, t] += amplitude * g
+
+
+        if np.max(attention_map) > 0:
+            attention_map /= np.max(attention_map)
+        return attention_map
 
 def compute_average_spectrum_from_dataset(dataset, target_sample_rate=44100):
 

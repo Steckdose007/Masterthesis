@@ -502,6 +502,10 @@ def split_list_after_speaker(words_segments):
         segments_val.extend(speaker_to_segments[speaker])
     for speaker in speakers_test:
         segments_test.extend(speaker_to_segments[speaker])
+
+    #segments_val = [segment for segment in segments_val if segment.augmented == False]
+    segments_test = [segment for segment in segments_test if segment.augmented == False]
+
     print(f"Number of segments in train: {len(segments_train)}, val: {len(segments_val)} test: {len(segments_test)}")
 
     return segments_train, segments_val, segments_test

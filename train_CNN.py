@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet, initialize_mobilenetV3, initialize_mobilenetV3small
 from audiodataloader import AudioDataLoader, AudioSegment, find_pairs, split_list_after_speaker
+from torch.utils.data import ConcatDataset
 from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
 import datetime
@@ -15,10 +16,11 @@ from tqdm import tqdm
 from collections import defaultdict
 import librosa
 from Dataloader_STT import AudioSegmentDataset
-from Dataloader_fixedlist import FixedListDataset
+from Dataloader_fixedlist import FixedListDataset,FixedListDatasetvalidation
 from create_fixed_list import TrainSegment
 from torch.nn.functional import interpolate
 #from torchsummary import summary
+from sklearn.metrics import accuracy_score, recall_score, roc_auc_score
 
 def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler, num_epochs=10,best_model_filename = None):
     best_loss = 1000000  # To keep track of the best accuracy
@@ -64,13 +66,13 @@ def train_model(model, train_loader, test_loader, criterion, optimizer,scheduler
         train_losses.append(epoch_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Train Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}")
         # Step the scheduler
-        #scheduler.step(val_loss)
+        #scheduler.step()
         # Evaluate on the test set
         val_loss, val_acc = evaluate_model(model, test_loader, criterion)
         val_losses.append(val_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}], Val Loss: {val_loss:.4f}, Val Accuracy: {val_acc:.4f}")
 
-        if val_loss < best_loss:
+        if val_acc > best_test_acc:
             best_loss = val_loss
             best_test_acc = val_acc
             #best_model_filename = os.path.join('models', best_model_filename)
@@ -114,15 +116,57 @@ def evaluate_model(model, test_loader, criterion):
 def plot_losses(train_losses, test_losses,best_model_filename,best_test_acc):
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label="Train Loss")
-    plt.plot(test_losses, label="Val Loss")
+    plt.plot(test_losses, label="Test Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Train and Val Loss over Epochs with Acc of: "+str(best_test_acc))
+    plt.title("Train and Test Loss over Epochs with Acc of: "+str(best_test_acc))
     plt.legend()
     plt.grid(True)
     plt.savefig('models/loss_plot'+best_model_filename+'.png')  # Save the plot as an image
-    plt.show()
+    #plt.show()
 
+def compute_metrics(y_true, y_pred, y_pred_proba):
+    """
+    Computes several performance metrics.
+    """
+    RR = accuracy_score(y_true, y_pred)  # Overall accuracy
+    Rn = recall_score(y_true, y_pred, pos_label=0)  # Recall for Normal class
+    Rp = recall_score(y_true, y_pred, pos_label=1)  # Recall for Pathological class
+    CL = (Rn + Rp) / 2   # Class-wise averaged recognition rate
+    AUC = roc_auc_score(y_true, y_pred_proba[:, 1])  # AUC using probabilities for positive class
+    return {
+        'RR': float(round(RR, 3)),
+        'Rn': float(round(Rn, 3)),
+        'Rp': float(round(Rp, 3)),
+        'CL': float(round(CL, 3)),
+        'AUC': float(round(AUC, 3))
+    }
+
+def evaluate_model_metrics(model, test_loader, criterion):
+    model.eval()
+    running_loss = 0.0
+    all_labels = []
+    all_preds = []
+    all_pred_probas = []
+    
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item() * inputs.size(0)
+            
+            # Get probabilities from the outputs
+            probabilities = torch.softmax(outputs, dim=1)
+            _, predicted = torch.max(outputs, 1)
+            
+            all_labels.extend(labels.cpu().numpy())
+            all_preds.extend(predicted.cpu().numpy())
+            all_pred_probas.extend(probabilities.cpu().numpy())
+    
+    avg_loss = running_loss / len(test_loader.dataset)
+    metrics = compute_metrics(np.array(all_labels), np.array(all_preds), np.array(all_pred_probas))
+    return avg_loss, metrics
 
 if __name__ == "__main__":
     
@@ -138,13 +182,13 @@ if __name__ == "__main__":
         "target_length": 224
     }
     Hyperparameters={
-        "gamma": 0.6447705236833117,
-        "step_size": 48,
-        "learning_rate": 0.00001,#0.00043477461811835107,
-        "batch_size": 64,
-        "momentum": 0.291,
-        "weight_decay":1.5577322999874843e-03,
-        "dropout":0.3
+        "gamma": 0.7301331136239125,
+        "step_size": 24,
+        "learning_rate": 0.0007155660444277831,
+        "batch_size": 128,
+        "momentum": 0.9393347731944004,
+        "weight_decay":5.495804018652414e-05,
+        "dropout":0.5
     }
     num_classes = 2  #  binary classification for sigmatism
     learning_rate = Hyperparameters["learning_rate"]
@@ -156,20 +200,21 @@ if __name__ == "__main__":
     dropout = Hyperparameters["dropout"]
     weight_decay = Hyperparameters["weight_decay"]
     #============================Load fixed lists =====================================
-    with open("data_lists/mother_list.pkl", "rb") as f:
+    with open("data_lists\mother_list_augment.pkl", "rb") as f:
         data = pickle.load(f)
     segments_train, segments_val, segments_test= split_list_after_speaker(data)
-    segments_train = FixedListDataset(segments_train)
-    segments_val = FixedListDataset(segments_val)
+    combined_train_val = segments_train + segments_val
+    segments_train = FixedListDataset(combined_train_val)
+    segments_test = FixedListDatasetvalidation(segments_test)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=2, pin_memory=True, prefetch_factor=4, persistent_workers=True)  # Fetches 2x the batch size in advance)
-    val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=2, pin_memory=True, prefetch_factor=4, persistent_workers=True) 
+    test_loader = DataLoader(segments_test, batch_size=batch_size, shuffle=False)#,num_workers=2, pin_memory=True, prefetch_factor=4, persistent_workers=True) 
 
 
     # Initialize model, loss function, and optimizer
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: ",device)
     num_classes = 2  # Change as needed
-    input_channels = 1  #input is grayscale spectrogram
+    input_channels = 2  #input is grayscale spectrogram
     model = initialize_mobilenetV3(num_classes,dropout, input_channels)
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
@@ -185,6 +230,16 @@ if __name__ == "__main__":
 
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    best_model_filename = f"V3_MEL_fixedLRandtimefrequmasking{timestamp}.pth"
+    best_model_filename = f"MEL+STT+ATT_ohneschedluer_Train+val{timestamp}.pth"
     
-    train_model(model, train_loader, val_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    train_model(model, train_loader, test_loader, criterion, optimizer,None, num_epochs=num_epochs,best_model_filename=best_model_filename)
+    model.load_state_dict(torch.load(os.path.join('models', best_model_filename)))
+    #path = "models\MEL+ATT_ohneschedluer_Train+val20250210-190753.pth"
+    #model = initialize_mobilenetV3(num_classes=2, dropout = 0.3, input_channels=2)
+    #model.load_state_dict(torch.load(path, weights_only=True,map_location=torch.device('cpu')))
+    #model.to(device) 
+    test_loss, test_metrics = evaluate_model_metrics(model, test_loader, criterion)
+    print(f"\nTest Loss: {test_loss:.4f}")
+    print("Test Metrics:")
+    for key, value in test_metrics.items():
+        print(f"{key}: {value}")

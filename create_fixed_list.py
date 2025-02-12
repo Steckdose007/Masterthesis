@@ -79,7 +79,7 @@ def create_list(word_segments):
         "n_fft":2048,
         "target_length": 224
     }
-    output_file = "mother_list.pkl"
+    output_file = "mother_list_augment.pkl"
     data = []
     for entry in tqdm(word_segments):
         start_time = entry.start_time
@@ -127,7 +127,7 @@ def create_list(word_segments):
             label_word = label_word,
             label_path = label_path,
             path = path,
-            augmented = False)
+            augmented = True)
         featur_object_pitch = TrainSegment(
             start_time = start_time,
             end_time = end_time,
@@ -138,7 +138,7 @@ def create_list(word_segments):
             label_word = label_word,
             label_path = label_path,
             path = path,
-            augmented = False)
+            augmented = True)
         data.append(featur_object)
         data.append(featur_object_noise)
         data.append(featur_object_pitch)
@@ -181,7 +181,7 @@ def augment_audio_list(word_segments):
             label_word = label_word,
             label_path = label_path,
             path = path,
-            augmented = False)
+            augmented = True)
         featur_object_pitch = TrainSegment(
             start_time = start_time,
             end_time = end_time,
@@ -190,7 +190,7 @@ def augment_audio_list(word_segments):
             label_word = label_word,
             label_path = label_path,
             path = path,
-            augmented = False)
+            augmented = True)
         data.append(featur_object)
         data.append(featur_object_noise)
         data.append(featur_object_pitch)
@@ -252,12 +252,12 @@ if __name__ == "__main__":
 
     # Load preprocessed audio segments from a pickle file
     #phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists/mother_list.pkl")
+    words_segments = loader.load_segments_from_pickle("data_lists/words_normalized_16kHz.pkl")
     print(np.shape(words_segments))
-    word = words_segments[10000]
-    print(np.shape(word.mfcc),np.shape(word.mel),np.shape(word.stt.detach().cpu().numpy()[0]))
-    compute_mean_std_for_stt_normalization(words_segments)
+    #word = words_segments[10000]
+    #print(np.shape(word.mfcc),np.shape(word.mel),np.shape(word.stt.detach().cpu().numpy()[0]))
+    #compute_mean_std_for_stt_normalization(words_segments)
     #word = words_segments[100]
     #plotting.visualize_augmentations(word.audio_data,word.sample_rate)
     #augment_audio_list(words_segments[:60])
-    #create_list(words_segments)
+    create_list(words_segments)

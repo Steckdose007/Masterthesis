@@ -8,7 +8,7 @@ from Dataloader_pytorch import AudioSegmentDataset
 import optuna
 from optuna.visualization import plot_param_importances,plot_parallel_coordinate
 from tqdm import tqdm
-from  Dataloader_fixedlist import FixedListDataset
+from  Dataloader_fixedlist import FixedListDataset,FixedListDatasetvalidation
 import numpy as np
 from optuna.pruners import MedianPruner, PatientPruner
 import pickle
@@ -28,8 +28,8 @@ def prepare_dataset():
 # Define objective function for Optuna
 def objective(trial):
     # ===== Hyperparameters to tune =====
-    #gamma = trial.suggest_float("gamma", 0.5, 0.99)
-    #step_size = trial.suggest_int("step_size", 5, 50)
+    gamma = trial.suggest_float("gamma", 0.5, 0.99)
+    step_size = trial.suggest_int("step_size", 5, 50)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256])
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD"])
@@ -51,7 +51,7 @@ def objective(trial):
     # which are instances of some Dataset. 
     segments_train, segments_val = prepare_dataset()
     segments_train = FixedListDataset(segments_train)
-    segments_val = FixedListDataset(segments_val)
+    segments_val = FixedListDatasetvalidation(segments_val)
     train_loader = DataLoader(segments_train, batch_size=batch_size, shuffle=True,num_workers=16, pin_memory=True, prefetch_factor=4, persistent_workers=True)  # Fetches 2x the batch size in advance)
     val_loader = DataLoader(segments_val, batch_size=batch_size, shuffle=False,num_workers=16, pin_memory=True, prefetch_factor=4, persistent_workers=True) 
 
@@ -75,7 +75,7 @@ def objective(trial):
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # Learning rate scheduler
-    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     # ===== Training loop =====
     num_epochs = 50
@@ -92,7 +92,7 @@ def objective(trial):
             optimizer.step()
         
         # Step the scheduler at the end of each epoch
-        # scheduler.step()
+        scheduler.step()
 
         # --- Validation ---
         model.eval()
@@ -147,16 +147,16 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
 
     # Save best hyperparameters
-    with open("hyperparam_output/best_hyperparameters_melatt.txt", "w") as f:
+    with open("hyperparam_output/best_hyperparameters_melattlrohneaugment.txt", "w") as f:
         f.write(f"Best trial accuracy: {trial.value}\n")
         f.write("Hyperparameters:\n")
         for key, value in trial.params.items():
             f.write(f"  {key}: {value}\n")
 
     fig = plot_param_importances(study)
-    fig.write_image("hyperparam_output/param_importances_melatt.png")
+    fig.write_image("hyperparam_output/param_importances_melattlrohneaugment.png")
     fig1 = plot_parallel_coordinate(study,target_name="validation loss")
-    fig1.write_image("hyperparam_output/plot_parallel_coordinate_melatt.png")
+    fig1.write_image("hyperparam_output/plot_parallel_coordinate_melattlrohneaugment.png")
 
     trials_data = []
     for t in study.trials:
@@ -172,4 +172,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(trials_data)
     
     # Save to CSV
-    df.to_csv("hyperparam_output/all_trials_results_melatt.csv", index=False)
+    df.to_csv("hyperparam_output/all_trials_results_melattlrohneaugment.csv", index=False)

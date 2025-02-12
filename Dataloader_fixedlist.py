@@ -62,15 +62,15 @@ class FixedListDataset(Dataset):
                             #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
                             #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
                             #stt+mel
-                            #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556])  
+                            #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556]),  
                             #mel
                             transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556]),  
-                            T.TimeMasking(time_mask_param=40),  # Mask up to 30 time steps
-                            T.FrequencyMasking(freq_mask_param=40)  # Mask up to 15 frequency bins
                             #mfcc
-                            #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211])  
+                            #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211]),
                             #stt
-                            #transforms.Normalize(mean=[0.27651408 ], std=[0.13017927])  
+                            #transforms.Normalize(mean=[0.27651408 ], std=[0.13017927])  ,
+                            T.TimeMasking(time_mask_param=30),  # Mask up to 30 time steps
+                            T.FrequencyMasking(freq_mask_param=30)  # Mask up to 15 frequency bins
                             ])
         self.scaler = MinMaxScaler(feature_range=(0, 1))
 
@@ -82,22 +82,22 @@ class FixedListDataset(Dataset):
 
         
         # ===== Process STT Feature =====
-        stt_feature = object.mel#stt.detach().cpu().numpy()[0]  
-        stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
-        stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
+        # stt_feature = object.stt.detach().cpu().numpy()[0]  
+        # stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        # stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
         
-        #att_map = self.generate_attention_map(word=object.label_word,mel_shape=stt_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
-        #att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
-        #print(object.label_word)
-        #plot_mel_and_attention(stt_resized, att_map)
 
-        # # ===== Process MFCC (Mel) Feature =====
-        # mel_feature = object.mel  
-        # mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
-        # mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+        # ===== Process MFCC (Mel) Feature =====
+        mel_feature = object.mel  
+        mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
 
-        # """ When stacked for mel + stt"""
-        # # ===== Stack Features =====
+        att_map = generate_attention_map(word=object.label_word,mel_shape=mel_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
+        att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
+        # print(object.label_word)
+        # plot_mel_and_attention(stt_resized, att_map)
+        """ When stacked for mel + stt"""
+        # ===== Stack Features =====
         # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
         # mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
         # stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
@@ -107,18 +107,81 @@ class FixedListDataset(Dataset):
         if label_str == "sigmatism":
              label = 1
 
-        featur_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)
+        featur_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)
         feature_normalized = self.transforms(featur_tensor) 
-        #final_features = torch.cat([feature_normalized, att_tensor], dim=0)
-        return  feature_normalized,label
+        final_features = torch.cat([feature_normalized, att_tensor], dim=0)
+        return  final_features,label
+
+class FixedListDatasetvalidation(Dataset):
+    def __init__(self, audio_segments: List[AudioSegment]):
+        """
+        Custom dataset for audio segments, prepares them for use in the CNN model.
+        
+        Parameters:
+        - audio_segments: A list of AudioSegment objects.
+        - target_length: The fixed length for padding/truncation.
+        """
+        self.audio_segments = audio_segments
+        self.transforms  = transforms.Compose([
+                            #transforms.RandomRotation(degrees=(-15, 15)),  # Rotate within -15 to 15 degrees
+                            #transforms.RandomResizedCrop(size=(128, 256), scale=(0.8, 1.0)),  # Random crop and resize
+                            #transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
+                            #transforms.RandomVerticalFlip(p=0.2),  # 20% chance of vertical flip
+                            #stt+mel
+                            #transforms.Normalize(mean=[0.27651408,  0.30779094070238355    ], std=[0.13017927,0.22442872857101556]),  
+                            #mel
+                            transforms.Normalize(mean=[0.30779094070238355  ], std=[0.22442872857101556]),  
+                            #mfcc
+                            #transforms.Normalize(mean=[0.7017749593696507], std=[0.04512508429596211]),
+                            #stt
+                            #transforms.Normalize(mean=[0.27651408 ], std=[0.13017927])  ,
+                            ])
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
+
+    def __len__(self):
+        return len(self.audio_segments)
+
+    def __getitem__(self, idx):
+        object = self.audio_segments[idx]
+
+        
+       # ===== Process STT Feature =====
+        # stt_feature = object.stt.detach().cpu().numpy()[0]  
+        # stt_resized = cv2.resize(stt_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        # stt_scaled = self.scaler.fit_transform(stt_resized)  # Scale the STT feature
+        
+
+        # ===== Process MFCC (Mel) Feature =====
+        mel_feature = object.mel  
+        mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
+        mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
+
+        att_map = generate_attention_map(word=object.label_word,mel_shape=mel_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
+        att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
+        # print(object.label_word)
+        # plot_mel_and_attention(stt_resized, att_map)
+        """ When stacked for mel + stt"""
+        # ===== Stack Features =====
+        # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # mel_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
+        # stacked_features = torch.cat([stt_tensor, mel_tensor], dim=0)  # Shape: (2, 224, 224)
+        #print(stacked_features.shape)
+        label = 0
+        label_str = object.label_path
+        if label_str == "sigmatism":
+             label = 1
+
+        featur_tensor = torch.tensor(mel_scaled, dtype=torch.float32).unsqueeze(0)
+        feature_normalized = self.transforms(featur_tensor) 
+        final_features = torch.cat([feature_normalized, att_tensor], dim=0)
+        return  final_features,label
 
 
-    def gaussian_1d(self, x, mu, sigma):
+def gaussian_1d( x, mu, sigma):
         """Compute 1D Gaussian value at x with mean mu and std sigma."""
         return (1.0 / (sigma * sqrt(2.0 * pi))) * exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-
-    def generate_attention_map(self,word: str,mel_shape: tuple,focus_phonemes=('s', 'z', 'x'),sigma_time=5.0,amplitude=1.0,extra_coverage=15):
+def generate_attention_map(word: str,mel_shape: tuple,focus_phonemes=('s', 'z', 'x'),sigma_time=5.0,amplitude=1.0,extra_coverage=15):
         """
         Generate a 2D attention map (freq_bins x time_steps) for a given word.
         Places Gaussian bumps in the time dimension for each focus phoneme.
@@ -157,7 +220,7 @@ class FixedListDataset(Dataset):
                     center_time -= extra_coverage
                 # Create a 1D Gaussian across this extended range, but clamp indices
                 for t in range(time_steps):
-                    g = self.gaussian_1d(t, center_time, sigma_time)
+                    g = gaussian_1d(t, center_time, sigma_time)
                     attention_map[:, t] += amplitude * g
 
 
@@ -212,8 +275,8 @@ if __name__ == "__main__":
     with open("data_lists/mother_list.pkl", "rb") as f:
         data = pickle.load(f)
     # Create dataset 
-    segments_test = FixedListDataset(data[:50])
-    logits,label = segments_test[20] 
+    segments_test = FixedListDatasetvalidation(data[:100])
+    logits,label = segments_test[56] 
     print(type(logits),logits.shape) 
     resized_array = logits.squeeze().detach().numpy()
 
