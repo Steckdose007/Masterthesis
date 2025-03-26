@@ -1,5 +1,0 @@
-Best trial accuracy: 0.5968253968253968
-Hyperparameters:
-  learning_rate: 0.0007541000561426342
-  batch_size: 64
-  dropout_rate: 0.34997027960901494

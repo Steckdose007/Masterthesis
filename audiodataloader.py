@@ -1,4 +1,3 @@
-#train GMM here to use it in paperimplementation
 """
 Workflow Summary:
 
@@ -41,19 +40,27 @@ import pickle
 import numpy as np
 import pandas as pd
 from numba import jit
-import timeit
-
+from scipy.signal import find_peaks
+import timeit 
+from collections import defaultdict
+from sklearn.model_selection import train_test_split
+import plotting
 sum_length =0
-
+import matplotlib as mpl
+mpl.rcParams.update({
+    'font.family': 'Arial',
+    'font.size': 10
+})
 @dataclass
 class AudioSegment:
     start_time: float
     end_time: float
     audio_data: np.ndarray
     sample_rate: int
-    label: str  
-    label_path: str
-    path: str
+    label: str  #word for example "sonne"
+    label_path: str # sigmatism or normal
+    path: str # which file it is from
+    #phonem_loc : list
 
 @jit(nopython=True)
 def rolling_std(signal, window_size):
@@ -71,12 +78,14 @@ def rolling_std(signal, window_size):
 
 
 class AudioDataLoader:
-    def __init__(self, config_file: str, phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
+    def __init__(self, config_file: str = 'config.json', phone_data: bool = False, word_data: bool = False, sentence_data: bool = False, get_buffer: bool = False, downsample : bool = False):
         self.phone_bool = phone_data
         self.word_bool = word_data
         self.sentence_bool = sentence_data
+        self.mean = 0
+        self.std = 0
         self.word_segments = []
-        self.target_sr = 32000
+        self.target_sr = 44100
         self.org_sample_rate = 44100
         self.sentence_segments = []
         self.phone_segments = []
@@ -88,7 +97,7 @@ class AudioDataLoader:
         self.label_path = None
         self.get_buffer = get_buffer
         self.buffer = 0.005 #5ms
-        self.buffer_word = 0.065#window to search for word
+        self.buffer_word = 0.05#window to search for word
         self.load_config(config_file)
         self.files = self.get_audio_csv_file_pairs()
 
@@ -100,6 +109,8 @@ class AudioDataLoader:
             self.sentences = config["sentences"]  
             self.dividing_word = config["dividing_word"]  # Load the dividing word (e.g., "Xylophone")
             self.folder_path = config["folder_path"]
+            self.mean = config["train_mean"]
+            self.std = config["train_std"]
     
     def get_audio_csv_file_pairs(self) -> List[Tuple[str, str]]:
         """
@@ -108,6 +119,7 @@ class AudioDataLoader:
         Returns:
         - A list of tuples, each containing a pair of .wav and .csv file paths.
         """
+        i=0
         if not (self.phone_bool == False and self.word_bool == False and self.sentence_bool == False):
             for path in self.folder_path:
                 self.label_path = os.path.basename(path)
@@ -120,10 +132,12 @@ class AudioDataLoader:
                     base_name = os.path.splitext(wav_file)[0]
                     corresponding_csv = base_name + '.csv'
                     if corresponding_csv in csv_files:
+                        i+=1
                         self.process_csv(os.path.join(path, wav_file),os.path.join(path, corresponding_csv))
+    
             return file_pairs
 
-    def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.01, label=None):
+    def find_real_start_end(self,signal, sample_rate, window_size_ms=20, threshold=0.0002, label=None):
         """
         Adjust the start and end of the word based on the rolling standard deviation.
         
@@ -144,25 +158,30 @@ class AudioDataLoader:
         # Compute the rolling standard deviation
         rolling_std_dev = rolling_std(signal, window_size)
 
-        """Ploting"""
-        # # Plot the original signal and the rolling standard deviation
-        # plt.figure(figsize=(14, 6))
-        # plt.plot(signal, label='Original Signal', alpha=0.75)
-        # plt.plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std Dev', color='orange')
-        # plt.title('Original Signal and Rolling Standard Deviation of '+label)
-        # plt.xlabel('Sample Index')
-        # plt.ylabel('Amplitude')
-        # plt.legend()
-        # plt.grid()
-        # plt.show()
-        # # Plot the rolling standard deviation and threshold
-        # plt.plot(rolling_std_dev, label='Rolling Std Dev')
-        # plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.01)')
-        # plt.title('Rolling Standard Deviation and Threshold')
-        # plt.xlabel('Frame')
-        # plt.ylabel('Standard Deviation')
-        # plt.legend()
-        # plt.show()
+        # Create a figure with two subplots
+        fig, axes = plt.subplots(2, 1, figsize=( 180 / 25.4 ,  120 / 25.4 ), sharex=True)
+        # Plot 1: Original signal and rolling standard deviation
+        axes[0].plot(signal, label='Original signal', alpha=0.75)
+        axes[0].plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std', color='orange')
+        axes[0].set_title('Original signal and rolling standard deviation of ' + label)
+        axes[0].set_ylabel('Amplitude')
+        axes[0].legend()
+        axes[0].grid()
+
+        # Plot 2: Rolling standard deviation and threshold
+        axes[1].plot(rolling_std_dev, label='Rolling Std', color='orange')
+        axes[1].axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.0002)')
+        axes[1].set_title('Rolling standard deviation and threshold')
+        axes[1].set_xlabel('Sample Index')
+        axes[1].set_ylabel('Standard deviation')
+        axes[1].legend()
+        axes[1].grid()
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Show the figure
+        plt.show()
 
         
         # Find the real start: from the beginning to where the std dev exceeds the threshold
@@ -190,10 +209,9 @@ class AudioDataLoader:
     def process_csv(self,wav_file,csv_file):
         # Load the audio using librosa
         audio_data, sample_rate = librosa.load(wav_file, sr=None)
-        # Normalize the audio to the range [-1, 1]
-        max_amplitude = np.max(np.abs(audio_data))  # Find the maximum absolute amplitude
-        if max_amplitude > 0:
-            audio_data = audio_data / max_amplitude  # Normalize the audio by its maximum value
+        #print(f"Original Sampling Rate: {sample_rate} Hz")
+        """Normalize the audio Z-Score """
+        audio_data = (audio_data - self.mean) / (self.std)
 
         # Load the CSV and process the word segments
         with open(csv_file, 'r') as file:
@@ -201,19 +219,13 @@ class AudioDataLoader:
             word_segment = []
             word_start = None
             word_label = None
-            sentence_start = None
-            sentence_end = None
-            sentence_label = None
-            current_sentence = None
             dividing_word = False
-            sentence_will_end = False
             beginning = True
             current_word = None
             last_word = None
             word_fin = False
 
             # Make a copy of the sentences so we can keep track of unprocessed sentences
-            remaining_sentences = self.sentences.copy()
             next(reader)
             for row in reader:
                 current_word = row[5]
@@ -242,70 +254,54 @@ class AudioDataLoader:
                     segment = audio_data[int(start_time):int(end_time)]
                     if(self.downsample):
                         segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                        
                     self.phone_segments.append(
                         AudioSegment(start_time=start_time, 
                                     end_time=end_time, 
                                     audio_data=segment, 
-                                    sample_rate= sample_rate, 
-                                    label=row[3],
-                                    label_path=self.label_path,
-                                    path = wav_file)
+                                    sample_rate= row[5], #here we save the word the phone comes from 
+                                    label=row[3],# herre we save what phone type it is
+                                    label_path=self.label_path,#sigmatis or normal
+                                    path = wav_file)#path to wav file
                     )
                     
                 # Pause handling: Pauses should be included in sentences, not treated as a break
                 if current_word != last_word or current_word == '':
                     if word_segment:
-                        # If we're in a sentence after "dividing_word"
-                        if not dividing_word and not current_sentence:                       
-                            if not dividing_word:
-                                end_time = start_time  # because the word ends at the beginning of the pause but 5 ms already substracted and then the 5ms on top
-                                if self.word_bool:
-                                    ###make rolling std
-                                    word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
-                                    end_time = (int(end_time+(self.buffer_word*sample_rate)))
-                                    if(word_start <0):
-                                        word_start = 0
-                                    segment = audio_data[int(word_start):int(end_time)]
-                                    adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
-                                    adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
-                                    ###till here
-                                    if(self.downsample):
-                                        adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                        # If we're in a sentence after "dividing_word"                      
+                        if not dividing_word:
+                            end_time = start_time + (self.buffer*sample_rate*5) # because the word ends at the beginning of the pause/new word but 5 ms already substracted and then the 5ms on top                
+                            if self.word_bool:
+                                ###make rolling std
+                                word_start = (int(word_start-(self.buffer_word*sample_rate)))#add the windowing to search for end and beginning
+                                end_time = (int(end_time+(self.buffer_word*sample_rate*3)))
+                                if(word_start <0):
+                                    word_start = 0
+                                segment = audio_data[int(word_start):int(end_time)]
+                                adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,label=word_label)
+                                #substract/add an extra buffer to really get everything
+                                adjusted_segment = audio_data[(int(word_start+adjusted_start-(self.buffer*sample_rate*2))):(int(word_start+adjusted_end+(self.buffer*sample_rate*2)))]
+                                ###till here
+                                if(self.downsample):
+                                    adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
+                                #words that long have a error
+                                if(adjusted_segment.size <= 1.7*self.target_sr):
                                     self.word_segments.append(
-                                        AudioSegment(start_time=int(word_start+adjusted_start), 
-                                                    end_time=int(word_start+adjusted_end), 
+                                        AudioSegment(start_time=int(word_start), 
+                                                    end_time=int(end_time), 
                                                     audio_data=adjusted_segment, 
-                                                    sample_rate=sample_rate, 
+                                                    sample_rate=self.target_sr, 
                                                     label=word_label,
                                                     label_path=self.label_path,
                                                     path = wav_file)
                                     )
-                                # Check if we are past the word "Xylophone"
-                                if word_label == self.dividing_word:
-                                    dividing_word = True
-                                word_segment = []
-                                word_fin = True
-                                word_start = None
-                                word_label = None
-                        elif sentence_will_end:
-                            sentence_end = start_time # because the word ends at the beginning of the pause
-                            # Append the sentence segment and reset
-                            if self.sentence_bool:
-                                segment = audio_data[int(sentence_start):int(sentence_end)]
-                                if(self.downsample):
-                                        segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                                self.sentence_segments.append(
-                                    AudioSegment(start_time=sentence_start, 
-                                                end_time=sentence_end, 
-                                                audio_data=segment, 
-                                                sample_rate=sample_rate, 
-                                                label=sentence_label,
-                                                label_path=self.label_path,
-                                                path = wav_file)
-                                )
-                            remaining_sentences.remove(current_sentence)  # Remove the processed sentence
-                            current_sentence = None  
-                            sentence_will_end = False
+                            # Check if we are past the word "Xylophone"
+                            if word_label == self.dividing_word:
+                                dividing_word = True
+                            word_segment = []
+                            word_fin = True
+                            word_start = None
+                            word_label = None
                 else:#it is no pause but a phone (word part)
                     # We are in the middle of a word or at the beginning
                     if word_start is None: #at the beginning of a word
@@ -314,60 +310,10 @@ class AudioDataLoader:
                     word_label = row[5]  # Extract word label from the CSV
                     word_segment.append((start_time, end_time))
 
-                    # Check if we are in the sentence section (after Xylophone)
-                    if dividing_word:
-                        if current_sentence is None:
-                            # Now search through remaining sentences instead of starting from scratch
-                            for sentence in remaining_sentences:
-                                if word_label == sentence[0]:  # Match the first word of a sentence
-                                    current_sentence = sentence
-                                    sentence_start = start_time
-                                    sentence_label = sentence[0] + " " + sentence[1]  
-                                    break
-                        if current_sentence and word_label == current_sentence[1]:  # Last word of sentence
-                            sentence_will_end = True
-
-
-            # Append any remaining word or sentence if any
-            if word_segment:
-                if dividing_word and current_sentence:
-                    if self.sentence_bool:
-                        segment = audio_data[int(sentence_start):int(sentence_end)]
-                        if(self.downsample):
-                            segment = librosa.resample(segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                        self.sentence_segments.append(
-                            AudioSegment(start_time=sentence_start, 
-                                        end_time=sentence_end, 
-                                        audio_data=segment, 
-                                        sample_rate=sample_rate, 
-                                        label=sentence_label,
-                                        label_path=self.label_path,
-                                        path = wav_file)
-                        )
-                elif not dividing_word:
-                    if self.word_bool:
-                        ###make rolling std
-                        word_start = (int(word_start-(self.buffer_word*sample_rate)))
-                        end_time = (int(end_time+(self.buffer_word*sample_rate)))
-                        segment = audio_data[int(word_start):int(end_time)]
-                        adjusted_start, adjusted_end = self.find_real_start_end(segment, sample_rate,word_label)
-                        adjusted_segment = audio_data[(int(word_start+adjusted_start)):(int(word_start+adjusted_end))]
-                        ###till here
-                        if(self.downsample):
-                            adjusted_segment = librosa.resample(adjusted_segment, orig_sr=self.org_sample_rate, target_sr=self.target_sr)
-                        self.word_segments.append(
-                            AudioSegment(start_time=int(word_start+adjusted_start), 
-                                        end_time=int(word_start+adjusted_end), 
-                                        audio_data=adjusted_segment, 
-                                        sample_rate=sample_rate, 
-                                        label=word_label,
-                                        label_path=self.label_path,
-                                        path = wav_file)
-                        )
             self.audio_data = None
             print(f"Audio {wav_file} processed with {np.shape(self.phone_segments)} phones, {np.shape(self.word_segments)} words and {np.shape(self.sentence_segments)} sentences.")
     
-    
+
     def save_segments_to_pickle(self,audio_segments: List[AudioSegment], filename: str):
         """
         Save the list of AudioSegment objects into a Pickle file.
@@ -411,6 +357,9 @@ class AudioDataLoader:
         return self.phone_segments
 
 def get_box_length(words_segments):
+    """
+    Plots word length and gives back the values.
+    """
     label_count = {}
     global sum_length
     for word_segment in words_segments:
@@ -420,15 +369,15 @@ def get_box_length(words_segments):
         label_count[label] += 1
 
     # Display the count for each label
-    print(label_count)
+    print(label_count )
     # Collect the word lengths per file (group by file paths)
     word_lengths_by_file = {}
 
     # Calculate word lengths for each word and group them by file path
     for word_segment in words_segments:
         sum_length += (word_segment.end_time - word_segment.start_time)
-        word_length = (word_segment.end_time - word_segment.start_time) / word_segment.sample_rate
-        if word_length > 1.2:
+        word_length = (word_segment.end_time - word_segment.start_time) / 44100 #hier durch das teilen weil ich die marken abspeichere von dem audio das auf 44100 gesampled wurde.
+        if word_length > 1.7:
             # Plot the original signal and the rolling standard deviation
             leng = str(int(word_segment.end_time - word_segment.start_time))
             plt.figure(figsize=(14, 6))
@@ -445,69 +394,169 @@ def get_box_length(words_segments):
         word_lengths_by_file[word_segment.label_path].append(word_length)
 
     # Create a boxplot for word lengths by file
-    plt.figure(figsize=(12, 6))
-    plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys())
-    plt.title("Distribution of Word Lengths by File")
-    plt.xlabel("Files")
-    plt.ylabel("Word Length (seconds)")
-    plt.xticks(rotation=90)
+    plt.figure(figsize=( 180 / 25.4 ,  120 / 25.4 ))
+    plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys(),vert=False)
+    plt.title("Distribution of word lengths by label")
+    plt.ylabel("Label")
+    plt.xlabel("Word Length (s)")
     plt.tight_layout()
-
+    plt.savefig("graphics/wordlength.svg", format="svg")
     # Show the boxplot
     plt.show()
 
+def find_pairs(audio_segments,phones_segments,index):
+    """
+    Takes a word which can be choosen by indices and searches for the correspüonding word in sig or normal. 
+    Can also find all corresponding phones for a word.
+    """
+    sigmatism = None
+    normal = None
+    phones =["z","s","Z","S","ts"]
+    phones_list_normal = []
+    phones_list_sigmatism = []
+    segment = audio_segments[index]###choose word here
+    
+    if segment.label_path == "sigmatism":
+        print("It is Sigmatism")
+        sigmatism = segment
+        #get path from other file with normal speech
+        matching_path = segment.path.replace("sigmatism", "normal")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base[:-4]}{ext}"
+        print("PATH:",path)
+        for normal in audio_segments:
+            if (normal.label_path == "normal" and
+                normal.label == segment.label and
+                normal.path == path):
+                print("Found normal pair")
+
+                if(phones_segments):
+                    for phone in phones_segments:
+                        if (phone.label_path == "normal" and
+                            phone.label in phones and
+                            phone.path == path and
+                            phone.sample_rate == sigmatism.label):
+                            phones_list_normal.append(phone)
+
+                        if (phone.label_path == "sigmatism" and
+                            phone.label in phones and
+                            phone.path == segment.path and
+                            phone.sample_rate == sigmatism.label):
+                            phones_list_sigmatism.append(phone)
+                    return sigmatism, normal, phones_list_normal, phones_list_sigmatism
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism
+
+    
+    if segment.label_path == "normal":
+        print("It is Normal")
+        normal =segment
+        matching_path = segment.path.replace("normal", "sigmatism")
+        base, ext = os.path.splitext(matching_path)
+        path = f"{base}_sig{ext}"
+        for sigmatism in audio_segments:
+            if (sigmatism.label_path == "sigmatism" and
+                sigmatism.label == normal.label and
+                sigmatism.path == path):
+                print("Found sigmatism pair")
+                if(phones_segments):
+                    for normal_phone in phones_segments:
+                        if (normal_phone.label_path == "normal" and
+                            normal_phone.label in phones and
+                            normal_phone.path == normal.path and
+                            normal_phone.sample_rate == sigmatism.label):
+                            phones_list_normal.append(normal_phone)
+
+                        if (normal_phone.label_path == "sigmatism" and
+                            normal_phone.label in phones and
+                            normal_phone.path == path and
+                            normal_phone.sample_rate == sigmatism.label):
+                            phones_list_sigmatism.append(normal_phone)
+                    return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
+                return sigmatism, normal, phones_list_normal, phones_list_sigmatism 
+
+
+    # If no pair is found, return None
+    print("ERROR...............................................ERROR")
+    return None, None,None,None
+
+def split_list_after_speaker(words_segments):
+    """
+    Groups words to their corresponding speakers and creates train test val split
+    Returns:
+    Train test val split with speakers
+    """
+    # Group word segments by speaker
+    speaker_to_segments = defaultdict(list)
+    for segment in words_segments:
+        normalized_path = segment.path.replace("\\", "/")
+        #print(normalized_path)
+        _, filename = os.path.split(normalized_path)
+        #print(filename)
+        speaker = filename.replace('_sig', '')
+        #print(speaker)
+        speaker_to_segments[speaker].append(segment)
+    # Get a list of unique speakers
+    speakers = list(speaker_to_segments.keys())
+    print("number speakers: ",np.shape(speakers))
+    # Split speakers into training and testing sets
+    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.13)
+    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.07)
+
+    # Collect word segments for each split
+    segments_train = []
+    segments_test = []
+    segments_val = []
+    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
+
+    for speaker in speakers_train:
+        segments_train.extend(speaker_to_segments[speaker])
+    for speaker in speakers_val:
+        segments_val.extend(speaker_to_segments[speaker])
+    for speaker in speakers_test:
+        segments_test.extend(speaker_to_segments[speaker])
+
+    #segments_val = [segment for segment in segments_val if segment.augmented == False]
+    segments_test = [segment for segment in segments_test if segment.augmented == False]
+
+    print(f"Number of segments in train: {len(segments_train)}, val: {len(segments_val)} test: {len(segments_test)}")
+
+    return segments_train, segments_val, segments_test
+
+def compute_mean_sdt_for_normalization(data):
+    """
+    Used to compute the mean and sdt for the z normalization
+    should be done on the training set and the values should then be used in the config file
+    """
+    segments_train, segments_val, segments_test= split_list_after_speaker(data)
+    train_samples = []
+    for f in segments_train:
+        train_samples.append(f.audio_data)
+    print(np.shape(train_samples))
+    train_samples = np.concatenate(train_samples)
+    train_mean = np.mean(train_samples)
+    train_std = np.std(train_samples)
+    print("train_mean:", train_mean, " train_std:", train_std)
 
 
 if __name__ == "__main__":
-
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
-    # # Sample signal data
-    # np.random.seed(0)
-    # signal = np.random.randn(100000)  # Large array for performance testing
-    # window_size = 100
-    
-    # # Timing the Numba implementation
-    # numba_time = timeit.timeit(lambda: rolling_std_numba(signal, window_size), number=10)
-    # print(f"Numba implementation time: {numba_time / 10:.5f} seconds")
-    # # Timing the Pandas implementation
-    # pandas_time = timeit.timeit(lambda: loader.rolling_std(signal, window_size), number=10)
-    # print(f"Pandas implementation time: {pandas_time / 10:.5f} seconds")
-
-
     #phones_segments = loader.create_dataclass_phones()
-    words_segments = loader.create_dataclass_words()
-    # sentences_segments = loader.create_dataclass_sentences()
-    # loader.save_segments_to_pickle(phones_segments, "phones_segments.pkl")
-    loader.save_segments_to_pickle(words_segments, "all_words_downsampled_to_32kHz.pkl")
-    # loader.save_segments_to_pickle(sentences_segments, "sentences_segments.pkl")
-    # phones_segments = loader.load_segments_from_pickle("phones_segments.pkl")
-    # words_segments = loader.load_segments_from_pickle("all_words_downsampled_to_8kHz.pkl")
-    #filtered_words = filter_and_pickle_audio_segments(words_segments)
-    # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    #print(np.shape(phones_segments))
-    biggest_sample=0
-    # Calculate word lengths for each word and group them by file path
-    for word_segment in words_segments:
-        if(biggest_sample<word_segment.audio_data.size):
-            biggest_sample = word_segment.audio_data.size
-    print("biggest sample: ",biggest_sample)
-    print("Avg Length 1: ",sum_length/np.shape(words_segments)[0])
-    sum_length =0
+    #words_segments = loader.create_dataclass_words()
+    #sentences_segments = loader.create_dataclass_sentences()
+    #loader.save_segments_to_pickle(phones_segments, "phone_normalized_44kHz.pkl")
+    #loader.save_segments_to_pickle(words_segments, "words_normalized_44kHz.pkl")
+    #loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
+    #compute_mean_sdt_for_normalization(words_segments)
     #get_box_length(words_segments)
-    print("Avg Length: ",sum_length/np.shape(words_segments)[0])
-    print(np.shape(words_segments))
-    #print(np.shape(sentences_segments),type(sentences_segments))
     
-    print("WORDS:::::::::::::::::::::::::::::::")
-    for i in range(5):
-        print((words_segments[i].end_time-words_segments[i].start_time)/words_segments[i].sample_rate,words_segments[i].label_path)
-        
-    # print("PHONES::::::::::::::::::::::::::::::")
-    # for i in range(5):
-    #     print((phones_segments[i].end_time-phones_segments[i].start_time)/phones_segments[i].sample_rate,phones_segments[i].label_path)
-   
-    # print("SENTENCES:::::::::::::::::::::::::::")
-    # for i in range(5):
-    #     print((sentences_segments[i].end_time-sentences_segments[i].start_time)/sentences_segments[i].sample_rate,sentences_segments[i].label_path)
+    #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100)
+    #print(np.shape(phones_list_normal),np.shape(phones_list_sigmatism),sigmatism.label) 
+    #plotting.plot_mel_spectrogram(sigmatism)
+    #plotting.plot_mfcc_and_mel_spectrogram(sigmatism)
+    #plotting.plot_mel_spectrogram(normal,phones_list_normal)
+    #plotting.compare_spectral_envelopes(sigmatism, normal)
 
-    
+   
+   
+
+  
