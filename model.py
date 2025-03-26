@@ -4,7 +4,10 @@ import torch.nn as nn
 from torchvision.models import mobilenet_v2,MobileNet_V2_Weights
 from torchvision.models import mobilenet_v3_small, mobilenet_v3_large, MobileNet_V3_Large_Weights,MobileNet_V3_Small_Weights
 
-
+"""
+CNN for 1D signal.
+Was used for thest where the audio was inputed directly
+"""
 class CNN1D(nn.Module):
     def __init__(self, num_classes, input_size):
         super(CNN1D, self).__init__()
@@ -46,7 +49,9 @@ class CNN1D(nn.Module):
         # Apply softmax to get probabilities
         #x = torch.softmax(x, dim=1)
         return x
-       
+
+"""
+Model is 2D CNN"""      
 class CNNMFCC(nn.Module):
     def __init__(self, num_classes, n_mfcc, target_frames, kernel_size=(5, 5), dropout_rate=0.3):
         super(CNNMFCC, self).__init__()
@@ -96,6 +101,7 @@ class CNNMFCC(nn.Module):
 
         return x
 
+"""Model approach fdor STT heatmap"""
 class modelSST(nn.Module):
     def __init__(self, num_classes, kernel_size=(5, 5), dropout_rate=0.3):
         super(modelSST, self).__init__()
@@ -149,6 +155,8 @@ class modelSST(nn.Module):
 
         return x
 
+"""
+Here are then all the mobilnets"""
 def initialize_mobilenet(num_classes,dropout, input_channels=1):
 
     model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT,dropout = dropout)  # Load pretrained MobileNetV2
@@ -204,7 +212,20 @@ def initialize_mobilenetV3small(num_classes,dropout, input_channels ):
         out_features=num_classes
     )    
     return model
-# num_classes = 2
-# input_channels = 1
-# model = initialize_mobilenetV3(num_classes,0.5 ,input_channels)
-# print(model)
+
+"""
+Export model for APP on Android
+"""
+def export_model():
+    import torch
+
+    model = initialize_mobilenetV3(num_classes=2, dropout=0.5, input_channels=2)
+    model.load_state_dict(torch.load("models\MELATT_Kotlin_test.pth", map_location='cpu'))
+    model.eval()
+
+    # Example using `torch.jit.script` or `torch.jit.trace`
+    example_input = torch.randn(1, 2, 224, 224)  # match input shape
+    traced_script_module = torch.jit.trace(model, example_input)
+
+    traced_script_module.save("models/mobilenetv3_audio.pt")
+export_model()

@@ -68,6 +68,11 @@ def make_STT_heatmap(audio,processor,model):
 
 
 def create_list(word_segments):
+    """
+    creates the list for training
+    for every word stt heatmap, mel and mfcc are created
+    modifies every word 3 times and puts it in the list 3 times
+    """
     MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-german"
     processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
     model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
@@ -147,12 +152,20 @@ def create_list(word_segments):
     with open(output_file, 'wb') as f:
         pickle.dump(data, f)
 
+import pickle
+from tqdm import tqdm
+import numpy as np
+import cv2
+from sklearn.preprocessing import MinMaxScaler
+
+# Function to augment a list of audio word segments
 def augment_audio_list(word_segments):
-    
-    
     output_file = "augmented_audios_list.pkl"
     data = []
+
+    # Iterate through each word segment
     for entry in tqdm(word_segments):
+        # Extract relevant attributes from the entry
         start_time = entry.start_time
         end_time = entry.end_time
         audio_normal = entry.audio_data
@@ -161,86 +174,122 @@ def augment_audio_list(word_segments):
         label_path = entry.label_path
         path = entry.path
 
-        #Put every word 3 times in the list. Normal , with noise, with pitch
-        audio_noise = data_augmentation.add_gaussian_noise(audio_normal,sample_rate)
-        audio_pitch = data_augmentation.pitch_shift(audio_normal,sample_rate)
+        # Apply data augmentation: add noise and pitch shift
+        audio_noise = data_augmentation.add_gaussian_noise(audio_normal, sample_rate)
+        audio_pitch = data_augmentation.pitch_shift(audio_normal, sample_rate)
+
+        # Create original TrainSegment (not augmented)
         featur_object = TrainSegment(
-            start_time = start_time,
-            end_time = end_time,
-            data = audio_normal,
-            sample_rate = sample_rate,
-            label_word = label_word,
-            label_path = label_path,
-            path = path,
-            augmented = False)
+            start_time=start_time,
+            end_time=end_time,
+            data=audio_normal,
+            sample_rate=sample_rate,
+            label_word=label_word,
+            label_path=label_path,
+            path=path,
+            augmented=False
+        )
+
+        # Create augmented segment with noise
         featur_object_noise = TrainSegment(
-            start_time = start_time,
-            end_time = end_time,
-            data = audio_noise,
-            sample_rate = sample_rate,
-            label_word = label_word,
-            label_path = label_path,
-            path = path,
-            augmented = True)
+            start_time=start_time,
+            end_time=end_time,
+            data=audio_noise,
+            sample_rate=sample_rate,
+            label_word=label_word,
+            label_path=label_path,
+            path=path,
+            augmented=True
+        )
+
+        # Create augmented segment with pitch shift
         featur_object_pitch = TrainSegment(
-            start_time = start_time,
-            end_time = end_time,
-            data = audio_pitch,
-            sample_rate = sample_rate,
-            label_word = label_word,
-            label_path = label_path,
-            path = path,
-            augmented = True)
+            start_time=start_time,
+            end_time=end_time,
+            data=audio_pitch,
+            sample_rate=sample_rate,
+            label_word=label_word,
+            label_path=label_path,
+            path=path,
+            augmented=True
+        )
+
+        # Append original and augmented segments to the data list
         data.append(featur_object)
         data.append(featur_object_noise)
         data.append(featur_object_pitch)
 
+    # Save all augmented data to a pickle file
     print(f"Saving processed data to {output_file}...")
     with open(output_file, 'wb') as f:
         pickle.dump(data, f)
 
+# Function to compute mean and standard deviation of raw audio data for normalization
 def compute_mean_sdt_for_normalization_audio(data):
-    segments_train, segments_val, segments_test= split_list_after_speaker(data)
-    train_samples = []
-    for f in segments_train:
-        train_samples.append(f.audio_data)
+    # Split data into training, validation, and test sets
+    segments_train, segments_val, segments_test = split_list_after_speaker(data)
+
+    train_samples = [f.audio_data for f in segments_train]
     print(np.shape(train_samples))
+
+    # Concatenate all training samples into a single array
     train_samples = np.concatenate(train_samples)
+
+    # Compute mean and standard deviation of the training audio
     train_mean = np.mean(train_samples)
     train_std = np.std(train_samples)
+
     print("train_mean:", train_mean, " train_std:", train_std)
 
+# Function to compute normalization statistics (mean, std) for MFCC or Mel features
 def compute_mean_std_for_mfccormel_normalization(words_list):
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_list)
-    
-    resized_mfccs = [cv2.resize(segment.mel, (224,224), interpolation=cv2.INTER_LINEAR)  for segment in segments_train]  
-    # Concatenate all MFCC frames across all segments
-    all_mfcc_frames  = np.concatenate(resized_mfccs)
-    
-    # Step 1: Scale each MFCC frame between 0 and 1
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    all_mfcc_scaled = scaler.fit_transform(all_mfcc_frames)
-    # Step 2: Compute global mean and standard deviation
-    global_mean = np.mean(all_mfcc_scaled)
-    global_std = np.std(all_mfcc_scaled)
-    print("global_mean  :  ",global_mean)
-    print("global_std  :  ",global_std)
+    # Split data into training, validation, and test sets
+    segments_train, segments_val, segments_test = split_list_after_speaker(words_list)
 
-def compute_mean_std_for_stt_normalization(words_list):
-    segments_train, segments_val, segments_test= split_list_after_speaker(words_list)
-    print()
-    resized_mfccs = [cv2.resize(segment.stt.detach().cpu().numpy()[0], (224,224), interpolation=cv2.INTER_LINEAR)  for segment in segments_train]  
-    # Concatenate all MFCC frames across all segments
-    all_mfcc_frames  = np.concatenate(resized_mfccs)
-    
-    # Step 1: Scale each MFCC frame between 0 and 1
+    # Resize all mel features to 224x224 and collect them
+    resized_mfccs = [
+        cv2.resize(segment.mel, (224, 224), interpolation=cv2.INTER_LINEAR)
+        for segment in segments_train
+    ]
+
+    # Concatenate all frames for global statistics computation
+    all_mfcc_frames = np.concatenate(resized_mfccs)
+
+    # Normalize using Min-Max scaling to [0, 1]
     scaler = MinMaxScaler(feature_range=(0, 1))
     all_mfcc_scaled = scaler.fit_transform(all_mfcc_frames)
-    # Step 2: Compute global mean and standard deviation
+
+    # Compute global mean and standard deviation
     global_mean = np.mean(all_mfcc_scaled)
     global_std = np.std(all_mfcc_scaled)
-    print("global_mean  :  ",global_mean)
-    print("global_std  :  ",global_std)
+
+    print("global_mean  :  ", global_mean)
+    print("global_std   :  ", global_std)
+
+# Function to compute normalization statistics for STT (e.g., spectrogram) embeddings
+def compute_mean_std_for_stt_normalization(words_list):
+    # Split data into training, validation, and test sets
+    segments_train, segments_val, segments_test = split_list_after_speaker(words_list)
+
+    # Resize all STT features to 224x224 and collect them
+    resized_mfccs = [
+        cv2.resize(segment.stt.detach().cpu().numpy()[0], (224, 224), interpolation=cv2.INTER_LINEAR)
+        for segment in segments_train
+    ]
+
+    # Concatenate all frames for global statistics computation
+    all_mfcc_frames = np.concatenate(resized_mfccs)
+
+    # Normalize using Min-Max scaling to [0, 1]
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    all_mfcc_scaled = scaler.fit_transform(all_mfcc_frames)
+
+    # Compute global mean and standard deviation
+    global_mean = np.mean(all_mfcc_scaled)
+    global_std = np.std(all_mfcc_scaled)
+
+    print("global_mean  :  ", global_mean)
+    print("global_std   :  ", global_std)
 
 
 if __name__ == "__main__":

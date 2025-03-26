@@ -46,7 +46,11 @@ from collections import defaultdict
 from sklearn.model_selection import train_test_split
 import plotting
 sum_length =0
-
+import matplotlib as mpl
+mpl.rcParams.update({
+    'font.family': 'Arial',
+    'font.size': 10
+})
 @dataclass
 class AudioSegment:
     start_time: float
@@ -154,25 +158,30 @@ class AudioDataLoader:
         # Compute the rolling standard deviation
         rolling_std_dev = rolling_std(signal, window_size)
 
-        """Ploting"""
-        # # Plot the original signal and the rolling standard deviation
-        # plt.figure(figsize=(14, 6))
-        # plt.plot(signal, label='Original Signal', alpha=0.75)
-        # plt.plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std Dev', color='orange')
-        # plt.title('Original Signal and Rolling Standard Deviation of '+label)
-        # plt.xlabel('Sample Index')
-        # plt.ylabel('Amplitude')
-        # plt.legend()
-        # plt.grid()
-        # plt.show()
-        # # Plot the rolling standard deviation and threshold
-        # plt.plot(rolling_std_dev, label='Rolling Std Dev')
-        # plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.0001)')
-        # plt.title('Rolling Standard Deviation and Threshold')
-        # plt.xlabel('Frame')
-        # plt.ylabel('Standard Deviation')
-        # plt.legend()
-        # plt.show()
+        # Create a figure with two subplots
+        fig, axes = plt.subplots(2, 1, figsize=( 180 / 25.4 ,  120 / 25.4 ), sharex=True)
+        # Plot 1: Original signal and rolling standard deviation
+        axes[0].plot(signal, label='Original signal', alpha=0.75)
+        axes[0].plot(np.arange(window_size, window_size + len(rolling_std_dev)), rolling_std_dev, label='Rolling Std', color='orange')
+        axes[0].set_title('Original signal and rolling standard deviation of ' + label)
+        axes[0].set_ylabel('Amplitude')
+        axes[0].legend()
+        axes[0].grid()
+
+        # Plot 2: Rolling standard deviation and threshold
+        axes[1].plot(rolling_std_dev, label='Rolling Std', color='orange')
+        axes[1].axhline(y=threshold, color='r', linestyle='--', label='Threshold (0.0002)')
+        axes[1].set_title('Rolling standard deviation and threshold')
+        axes[1].set_xlabel('Sample Index')
+        axes[1].set_ylabel('Standard deviation')
+        axes[1].legend()
+        axes[1].grid()
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Show the figure
+        plt.show()
 
         
         # Find the real start: from the beginning to where the std dev exceeds the threshold
@@ -348,6 +357,9 @@ class AudioDataLoader:
         return self.phone_segments
 
 def get_box_length(words_segments):
+    """
+    Plots word length and gives back the values.
+    """
     label_count = {}
     global sum_length
     for word_segment in words_segments:
@@ -382,13 +394,13 @@ def get_box_length(words_segments):
         word_lengths_by_file[word_segment.label_path].append(word_length)
 
     # Create a boxplot for word lengths by file
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=( 180 / 25.4 ,  120 / 25.4 ))
     plt.boxplot([word_lengths for word_lengths in word_lengths_by_file.values()], labels=word_lengths_by_file.keys(),vert=False)
-    plt.title("Distribution of Word Lengths by Label")
+    plt.title("Distribution of word lengths by label")
     plt.ylabel("Label")
-    plt.xlabel("Word Length (seconds)")
+    plt.xlabel("Word Length (s)")
     plt.tight_layout()
-
+    plt.savefig("graphics/wordlength.svg", format="svg")
     # Show the boxplot
     plt.show()
 
@@ -511,6 +523,10 @@ def split_list_after_speaker(words_segments):
     return segments_train, segments_val, segments_test
 
 def compute_mean_sdt_for_normalization(data):
+    """
+    Used to compute the mean and sdt for the z normalization
+    should be done on the training set and the values should then be used in the config file
+    """
     segments_train, segments_val, segments_test= split_list_after_speaker(data)
     train_samples = []
     for f in segments_train:
@@ -523,17 +539,14 @@ def compute_mean_sdt_for_normalization(data):
 
 
 if __name__ == "__main__":
-    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=False)
+    loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     #phones_segments = loader.create_dataclass_phones()
     #words_segments = loader.create_dataclass_words()
     #sentences_segments = loader.create_dataclass_sentences()
     #loader.save_segments_to_pickle(phones_segments, "phone_normalized_44kHz.pkl")
     #loader.save_segments_to_pickle(words_segments, "words_normalized_44kHz.pkl")
     #loader.save_segments_to_pickle(sentences_segments, "sentences_atleast2048long_16kHz.pkl")
-    phones_segments = loader.load_segments_from_pickle("data_lists\phone_without_normalization_44kHz.pkl")
-    words_segments = loader.load_segments_from_pickle("data_lists\words_without_normalization_16kHz.pkl")
-    # sentences_segments = loader.load_segments_from_pickle("sentences_segments.pkl")
-    compute_mean_sdt_for_normalization(words_segments)
+    #compute_mean_sdt_for_normalization(words_segments)
     #get_box_length(words_segments)
     
     #sigmatism, normal, phones_list_normal, phones_list_sigmatism = find_pairs(words_segments,phones_segments,100)

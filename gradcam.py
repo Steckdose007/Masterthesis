@@ -204,6 +204,7 @@ def overlay_heatmap_with_input_2channel(input_tensor, heatmap, word_spoken, labe
 
 def explain_model(dataset):
     #path = "models/Mobilenet_20241129-170942.pth"
+    #'path to best model'
     path = "models\MEL+ATT_ohneschedluer_Train+val20250210-190753.pth"
     model = initialize_mobilenetV3(num_classes=2, dropout = 0.3, input_channels=2)
     model.load_state_dict(torch.load(path, weights_only=True,map_location=torch.device('cpu')))
@@ -218,7 +219,7 @@ def explain_model(dataset):
 
 def find_spezific_word(dataset, word, label):
     for i in range(len(dataset)):
-        input_tensor, target_class, word_spoken = dataset[i+100]
+        input_tensor, target_class, word_spoken = dataset[i+100]#adjust the 100 because it finds only the next index
         if(word_spoken == word and label == target_class):
             print(i)
             return input_tensor, target_class, word_spoken
@@ -235,5 +236,6 @@ if __name__ == "__main__":
     # Create dataset 
     segments_test = GradcamDataset(segments_test)
     segments_train = GradcamDataset(segments_train)
+    #Use test set to see how good model looks
     explain_model(segments_test)
     

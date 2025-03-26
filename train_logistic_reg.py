@@ -12,44 +12,7 @@ import sklearn.metrics
 import seaborn as sns
 import torch.nn.functional as F
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-
-def split_list_after_speaker(words_segments):
-    """
-    Groups words to their corresponding speakers and creates train test val split
-    Returns:
-    Train test val split with speakers
-    """
-    # Group word segments by speaker
-    speaker_to_segments = defaultdict(list)
-    for segment in words_segments:
-        normalized_path = segment["path"].replace("\\", "/")
-        #print(normalized_path)
-        _, filename = os.path.split(normalized_path)
-        #print(filename)
-        speaker = filename.replace('_sig', '')
-        #print(speaker)
-        speaker_to_segments[speaker].append(segment)
-    # Get a list of unique speakers
-    speakers = list(speaker_to_segments.keys())
-    print("number speakers: ",np.shape(speakers))
-    # Split speakers into training and testing sets
-    speakers_train, speakers_test = train_test_split(speakers, random_state=42, test_size=0.13)
-    speakers_train, speakers_val = train_test_split(speakers_train, random_state=42, test_size=0.07)
-
-    # Collect word segments for each split
-    segments_train = []
-    segments_test = []
-    segments_val = []
-    print(f"Number of speakers in train: {len(speakers_train)}, val: {len(speakers_val)} test: {len(speakers_test)}")
-
-    for speaker in speakers_train:
-        segments_train.extend(speaker_to_segments[speaker])
-    for speaker in speakers_val:
-        segments_val.extend(speaker_to_segments[speaker])
-    for speaker in speakers_test:
-        segments_test.extend(speaker_to_segments[speaker])
-
-    return segments_train, segments_val, segments_test
+from audiodataloader import split_list_after_speaker
 
 def load_per_word_auc(pickle_path):
     with open(pickle_path, "rb") as f:

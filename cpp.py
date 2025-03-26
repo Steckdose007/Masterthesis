@@ -22,6 +22,11 @@ import torch
 import torch.nn.functional as F
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from frechet_audio_distance  import FrechetAudioDistance  
+import matplotlib as mpl
+mpl.rcParams.update({
+    'font.family': 'Arial',
+    'font.size': 10
+})
 
 def compute_mean_and_cov(features: np.ndarray):
     """
@@ -282,7 +287,7 @@ def paired_t_test(words_segments):
     normal_means = df_merged_sorted['CPP_normal']
     sigmatism_means = df_merged_sorted['CPP_sigmatism']
 
-    plt.figure(figsize=(8,6))
+    plt.figure(figsize=(120/25.4, 120/25.4))
     for i in range(len(speakers)):
         # Plot a line from (0, normal) to (1, sigmatism)
         plt.plot([0, 1], [normal_means.iloc[i], sigmatism_means.iloc[i]], 
@@ -290,12 +295,15 @@ def paired_t_test(words_segments):
 
     # Make the x-axis show "Normal" vs "Sigmatism" instead of 0 vs 1
     plt.xticks([0, 1], ['Normal', 'Sigmatism'])
-    plt.title("Paired Plot of Normal vs. Sigmatism Mean CPP per Speaker")
+    #plt.title("Paired Plot of Normal vs. Sigmatism Mean CPP per Speaker")
     plt.ylabel("Mean CPP (dB)")
     plt.grid(True, axis='y', linestyle='--', alpha=0.7)
+    plt.rcParams['svg.fonttype'] = 'none' # Text is not rendered
+    plt.rcParams['pdf.fonttype'] = 42 # TrueType to avoid PDF issues
+    plt.tight_layout()
     plt.show()
 
-    plt.figure(figsize=(8,6))
+    plt.figure(figsize=(120/25.4, 120/25.4))
     for i in range(len(speakers)):
         # Plot a line from (0, normal) to (1, sigmatism)
         plt.plot([0, 1],
@@ -311,10 +319,12 @@ def paired_t_test(words_segments):
 
     # Make the x-axis show "Normal" vs "Sigmatism" instead of 0 vs 1
     plt.xticks([0, 1], ['Normal', 'Sigmatism'])
-    plt.title("Paired Plot of Normal vs. Sigmatism Mean CPP per Speaker")
+    #plt.title("Paired Plot of Normal vs. Sigmatism Mean CPP per Speaker")
     plt.ylabel("Mean CPP (dB)")
     plt.grid(True, axis='y', linestyle='--', alpha=0.7)
     plt.legend()
+    plt.rcParams['svg.fonttype'] = 'none' # Text is not rendered
+    plt.rcParams['pdf.fonttype'] = 42 # TrueType to avoid PDF issues
     plt.tight_layout()
     plt.show()
 
@@ -409,20 +419,28 @@ def fid_plotting(words_segments):
     #print("Per-Speaker FID:\n", results_df)
     df_clean = results_df.dropna(subset=['FID'])
     
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(120/25.4, 120/25.4))
     plt.boxplot(df_clean['FID'],patch_artist=True, showmeans=True)
     plt.ylabel("FID (normal vs. sigmatism)")
-    plt.title("Distribution of FID Scores Across All Speakers")
+    plt.xlabel("Words")
+    plt.xticks([])
+    #plt.title("Distribution of FID Scores Across All Speakers")
+    plt.rcParams['svg.fonttype'] = 'none' # Text is not rendered
+    plt.rcParams['pdf.fonttype'] = 42 # TrueType to avoid PDF issues
     plt.show()
 
     speaker_means_df = df_clean.groupby('Speaker')['FID'].mean().reset_index()
     speaker_means_df.columns = ['Speaker', 'MeanFID']
 
     # Make a new boxplot
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(120/25.4, 120/25.4))
     plt.boxplot(speaker_means_df['MeanFID'],patch_artist=True, showmeans=True)
     plt.ylabel("Mean FID (across words)")
-    plt.title("Distribution of Mean FIDs Per Speaker")
+    plt.xlabel("Speaker")
+    plt.xticks([])
+    #plt.title("Distribution of Mean FIDs Per Speaker")
+    plt.rcParams['svg.fonttype'] = 'none' # Text is not rendered
+    plt.rcParams['pdf.fonttype'] = 42 # TrueType to avoid PDF issues
     plt.show()
 
 def compare_sonne_pairs(words_segments):
@@ -801,7 +819,7 @@ def split_list_after_speaker(words_segments):
 if __name__ == "__main__":
 
     per_word_auc_data = load_per_word_auc("STT_csv\per_word_auc_values.pkl")
-    compute_fid_for_heatmap(per_word_auc_data)
+    #compute_fid_for_heatmap(per_word_auc_data)
 
     loader = AudioDataLoader(config_file='config.json', word_data= False, phone_data= False, sentence_data= False, get_buffer=True, downsample=True)
     phones_segments = loader.load_segments_from_pickle("data_lists\phone_normalized_16kHz.pkl")
@@ -815,7 +833,7 @@ if __name__ == "__main__":
         "target_length": 224
     }
     segments_train, segments_val, segments_test= split_list_after_speaker(words_segments)
-    compute_fid_hidden_features(segments_val)
+    #compute_fid_hidden_features(segments_val)
     #segments = AudioSegmentDataset(words_segments,phones_segments, mfcc_dim, augment= False)
     #mu1, sigma1 = compute_mean_and_cov(words_segments[0].audio_data)
     #mu2, sigma2 = compute_mean_and_cov(words_segments[0].audio_data)
@@ -825,8 +843,8 @@ if __name__ == "__main__":
     #fid_plotting_randompairs(words_segments,3000)
     #FAD_libary() # use method with model
     #compare_sonne_pairs(words_segments)
-    #fid_plotting(words_segments) 
-    #paired_t_test(words_segments)
+    fid_plotting(words_segments) 
+    paired_t_test(words_segments)
     #word = words_segments[0]
     #cpp_calc_and_plot(word.audio_data,word.sample_rate,pitch_range=[60, 400], trendline_quefrency_range=[0.0001, 0.05], cepstrum = 'real_cepstrum',plotting = True)
     #get_cppplots_per_speaker_and_disorder(words_segments)

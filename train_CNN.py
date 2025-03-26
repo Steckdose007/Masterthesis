@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader
 from model import CNN1D ,modelSST,  CNNMFCC,initialize_mobilenet, initialize_mobilenetV3, initialize_mobilenetV3small
 from audiodataloader import AudioDataLoader, AudioSegment, find_pairs, split_list_after_speaker
 from torch.utils.data import ConcatDataset
-from Dataloader_pytorch import AudioSegmentDataset ,process_and_save_dataset
 from sklearn.model_selection import train_test_split
 import datetime
 import os
@@ -15,7 +14,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm  
 from collections import defaultdict
 import librosa
-from Dataloader_STT import AudioSegmentDataset
 from Dataloader_fixedlist import FixedListDataset,FixedListDatasetvalidation
 from create_fixed_list import TrainSegment
 from torch.nn.functional import interpolate

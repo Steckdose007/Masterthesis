@@ -6,9 +6,20 @@ import numpy as np
 import scipy.fft
 from scipy.signal import savgol_filter
 import data_augmentation
+import matplotlib as mpl
+mpl.rcParams.update({
+    'font.family': 'Arial',
+    'font.size': 10
+})
 
 def plot_mel_spectrogram(word, phones=None):
+    """
+    Plots Signal and MEL/MFCC in one plot. 
+    For visualizing the Attention and Phonem boundaries uncomment either:
+        'Approach 2 see twist' or 'APProach 1 see twist'
+    then also the phones have to be given
 
+    """
     signal = word.audio_data
     sample_rate = word.sample_rate
     scaling=sample_rate/44100
@@ -173,7 +184,9 @@ def plot_mfcc_and_mel_spectrogram(segment, sample_rate=24000, n_mfcc=128, n_mels
     plt.show()
 
 def compare_spectral_envelopes(word1, word2, n_fft=2048, smoothing_window=51, poly_order=3):
-    
+    """
+    Plots spectral envolopes of two words.
+    """
     # Extract audio data and sample rates
     signal1, sr1, label1 = word1.audio_data, word1.sample_rate, word1.label_path
     signal2, sr2, label2 = word2.audio_data, word2.sample_rate, word2.label_path
@@ -202,7 +215,6 @@ def compare_spectral_envelopes(word1, word2, n_fft=2048, smoothing_window=51, po
     plt.legend()
     plt.grid()
     plt.show()
-
 
 def visualize_augmentations(audio_data, sample_rate):
     """
@@ -240,3 +252,41 @@ def visualize_augmentations(audio_data, sample_rate):
     plt.tight_layout()
     plt.show()
 
+def plot_freq_spektrum(audio):
+    """
+    Plots frequ spektrum of the whole dataset.
+    """
+    sr = 22050  # Sample rate
+    n_fft = 2048  # FFT window size
+    hop_length = 512  # Hop length for STFT
+
+    # Initialize an array to accumulate spectra
+    average_spectrum = None
+    count = 0
+    for file in audio:
+        fft_result = np.abs(np.fft.rfft(file.audio_data, n=n_fft))  # Compute FFT (magnitude spectrum)
+        
+        if average_spectrum is None:
+            average_spectrum = fft_result  # Initialize
+        else:
+            average_spectrum += fft_result  # Sum spectra
+        
+        count += 1
+
+    # Compute the average spectrum
+    if count > 0:
+        average_spectrum /= count  # Normalize by number of files
+    print(count)
+    # Compute frequency axis
+    frequencies = np.fft.rfftfreq(n_fft, 1/sr)
+
+    # Plot the average frequency spectrum
+    plt.figure(figsize=(180 / 25.4 ,  100 / 25.4))
+    plt.plot(frequencies, average_spectrum, label="Average Spectrum", color="blue")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Magnitude")
+    plt.title("Average Frequency Spectrum")
+    plt.legend()
+    plt.grid()
+    plt.savefig("graphics/freqspektrum.svg", format="svg")
+    plt.show()

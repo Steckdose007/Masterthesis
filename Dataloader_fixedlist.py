@@ -22,6 +22,11 @@ import torch.nn.functional as F
 from create_fixed_list import TrainSegment
 from sklearn.preprocessing import MinMaxScaler
 from math import exp, sqrt, pi
+import matplotlib as mpl
+mpl.rcParams.update({
+    'font.family': 'Arial',
+    'font.size': 10
+})
 
 @dataclass
 class AudioSegment:
@@ -94,8 +99,9 @@ class FixedListDataset(Dataset):
 
         att_map = generate_attention_map(word=object.label_word,mel_shape=mel_scaled.shape,focus_phonemes=('s', 'z', 'x'),sigma_time=30.0,amplitude=1.0)
         att_tensor = torch.tensor(att_map, dtype=torch.float32).unsqueeze(0) 
+        
         # print(object.label_word)
-        # plot_mel_and_attention(stt_resized, att_map)
+        plot_mel_and_attention(mel_resized, att_map, object.label_word)
         """ When stacked for mel + stt"""
         # ===== Stack Features =====
         # stt_tensor = torch.tensor(stt_scaled, dtype=torch.float32).unsqueeze(0)  # Shape: (1, 224, 224)
@@ -152,6 +158,7 @@ class FixedListDatasetvalidation(Dataset):
         
 
         # ===== Process MFCC (Mel) Feature =====
+        """here choose which feature to train on """
         mel_feature = object.mel  
         mel_resized = cv2.resize(mel_feature, (224, 224), interpolation=cv2.INTER_LINEAR)
         mel_scaled = self.scaler.fit_transform(mel_resized)  # Scale the MFCC feature
@@ -228,7 +235,7 @@ def generate_attention_map(word: str,mel_shape: tuple,focus_phonemes=('s', 'z', 
             attention_map /= np.max(attention_map)
         return attention_map
     
-def plot_mel_and_attention(mel_spectrogram, attention_map):
+def plot_mel_and_attention(mel_spectrogram, attention_map,word):
     """
     Plots two subplots vertically: the mel spectrogram on the top 
     and the attention map on the bottom.
@@ -237,7 +244,7 @@ def plot_mel_and_attention(mel_spectrogram, attention_map):
         mel_spectrogram (np.ndarray): 2D array (freq_bins, time_steps).
         attention_map (np.ndarray):    2D array (freq_bins, time_steps).
     """
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 8), sharex=True)
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(180 / 25.4 ,  100 / 25.4), sharex=True)
 
     axes[0].imshow(
         mel_spectrogram,
@@ -245,7 +252,7 @@ def plot_mel_and_attention(mel_spectrogram, attention_map):
         origin='lower',
         cmap='plasma'
     )
-    axes[0].set_title("Mel Spectrogram")
+    axes[0].set_title(f"Mel Spectrogram for word {word}")
     axes[0].set_ylabel("Frequency Bins")
 
     axes[1].imshow(
@@ -254,7 +261,7 @@ def plot_mel_and_attention(mel_spectrogram, attention_map):
         origin='lower',
         cmap='plasma'
     )
-    axes[1].set_title("Attention Map")
+    axes[1].set_title("Attention Map for word {word}")
     axes[1].set_xlabel("Time Steps")
     axes[1].set_ylabel("Frequency Bins")
 
@@ -275,8 +282,8 @@ if __name__ == "__main__":
     with open("data_lists/mother_list.pkl", "rb") as f:
         data = pickle.load(f)
     # Create dataset 
-    segments_test = FixedListDatasetvalidation(data[:100])
-    logits,label = segments_test[56] 
+    segments_test = FixedListDataset(data[:100])
+    logits,label = segments_test[3] 
     print(type(logits),logits.shape) 
     resized_array = logits.squeeze().detach().numpy()
 
